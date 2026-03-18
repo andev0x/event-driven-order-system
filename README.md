@@ -1,303 +1,196 @@
 # Event-Driven Order System
 
-A production-inspired **event-driven order management system** built with **Go**, focusing on scalable microservices architecture, asynchronous event processing, distributed system design, and production-ready operational practices.
+A production-grade event-driven order management system built with Go, demonstrating scalable microservices architecture, asynchronous event processing, and distributed system design patterns.
 
 ## Table of Contents
 
 - [Overview](#overview)
 - [Architecture](#architecture)
 - [Services](#services)
-- [Project Structure](#project-structure)
-- [Quick Start](#quick-start)
-- [API Documentation](#api-documentation)
-- [Development Guide](#development-guide)
+- [Getting Started](#getting-started)
+- [API Reference](#api-reference)
+- [Development](#development)
 - [Testing](#testing)
 - [Deployment](#deployment)
-- [Monitoring & Observability](#monitoring--observability)
-- [Design Decisions](#design-decisions)
-- [Future Improvements](#future-improvements)
+- [Monitoring](#monitoring)
+- [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [License](#license)
 
 ## Overview
 
-### Key Features
+### Features
 
-- **Microservices Architecture**: Independent services with clear responsibilities
-- **Event-Driven Communication**: Asynchronous messaging via RabbitMQ for service decoupling
-- **Distributed Persistence**: Each service maintains its own database (database-per-service pattern)
-- **Caching Strategy**: Redis cache-aside pattern for performance optimization
-- **Clean Architecture**: Layered design with clear separation of concerns (handlers, services, repositories)
-- **Production-Ready Patterns**: Proper error handling, structured logging, and metrics
+| Feature | Description |
+|---------|-------------|
+| Microservices Architecture | Independent services with well-defined responsibilities |
+| Event-Driven Communication | Asynchronous messaging via RabbitMQ for loose coupling |
+| Database-per-Service | Isolated data stores ensuring service autonomy |
+| Cache-Aside Pattern | Redis-based caching for optimized read performance |
+| Clean Architecture | Layered design separating handlers, services, and repositories |
+| Production Patterns | Structured logging, metrics, and comprehensive error handling |
 
 ### Technology Stack
 
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| Language | Go 1.21+ | High-performance backend |
-| Message Broker | RabbitMQ 3 | Asynchronous event communication |
-| Caching | Redis 7 | In-memory data cache |
-| Primary Database | MySQL 8 | Persistent storage |
-| Containerization | Docker | Consistent deployment environment |
-| Orchestration | Docker Compose | Local development orchestration |
+| Component | Technology | Version |
+|-----------|------------|---------|
+| Language | Go | 1.21+ |
+| Message Broker | RabbitMQ | 3.x |
+| Cache | Redis | 7.x |
+| Database | MySQL | 8.x |
+| Containerization | Docker | Latest |
+| Orchestration | Docker Compose | v2.10+ |
 
 ## Architecture
 
-### High-Level System Design
+### System Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                          External Client                        │
-└────────────────┬─────────────────────────────────────────────────┘
-                 │ REST API
-                 ▼
-         ┌──────────────────┐
-         │  Order Service   │─── MySQL (order_db)
-         │  :8080           │─── Redis (cache)
-         └────────┬─────────┘
-                  │ Publish Events
-                  │ OrderCreated
-                  │ OrderProcessed
-                  ▼
-         ┌──────────────────┐
-         │    RabbitMQ      │
-         │    :5672         │
-         └────────┬─────────┘
-                  │
-         ┌────────┴──────────┐
-         │                   │
-         ▼                   ▼
-    ┌──────────────┐   ┌──────────────────┐
-    │ Analytics    │   │  Notification    │
-    │ Service      │   │  Worker          │
-    │ :8081        │   │  (background)    │
-    └──────────────┘   └──────────────────┘
-    │ MySQL        │   (Event consumer)
-    │ Redis        │
+┌─────────────────────────────────────────────────────────────────────┐
+│                           External Client                           │
+└───────────────────────────────┬─────────────────────────────────────┘
+                                │ REST API
+                                ▼
+                     ┌──────────────────────┐
+                     │    Order Service     │───── MySQL (order_db)
+                     │       :8080          │───── Redis (cache)
+                     └──────────┬───────────┘
+                                │ Publish Events
+                                ▼
+                     ┌──────────────────────┐
+                     │      RabbitMQ        │
+                     │       :5672          │
+                     └──────────┬───────────┘
+                                │
+              ┌─────────────────┴─────────────────┐
+              │                                   │
+              ▼                                   ▼
+   ┌────────────────────┐            ┌────────────────────┐
+   │  Analytics Service │            │ Notification Worker│
+   │       :8081        │            │    (background)    │
+   └────────────────────┘            └────────────────────┘
+              │                               │
+        MySQL + Redis                  Event Consumer
 ```
 
-### Architectural Principles
+### Design Principles
 
-1. **Service Decoupling**: Services communicate through events, not direct API calls
-2. **Database Isolation**: Each service owns its data; no shared databases
-3. **Asynchronous-First**: Event-driven design for scalability and resilience
-4. **Failure Isolation**: Service failures don't cascade to dependent services
-5. **Clear Contracts**: Well-defined event schemas for inter-service communication
+1. **Service Decoupling** - Services communicate exclusively through events
+2. **Database Isolation** - Each service owns and manages its data independently
+3. **Asynchronous-First** - Event-driven design enables scalability and resilience
+4. **Failure Isolation** - Service failures are contained and do not cascade
+5. **Contract-Driven** - Well-defined event schemas for inter-service communication
 
 ## Services
 
-### 1. Order Service
+### Order Service
+
+The primary entry point for order management operations.
 
 **Responsibilities:**
-- Accept and validate order creation requests
-- Persist orders to database
-- Cache frequently accessed orders
-- Publish domain events for order state changes
+- Order creation and validation
+- Data persistence and caching
+- Domain event publication
 
-**Technology:**
-- REST API (Go)
-- MySQL Database (order_db)
-- Redis Cache
-- RabbitMQ Producer
+**Stack:** REST API, MySQL, Redis, RabbitMQ Producer
 
-**Key Features:**
-- Order creation with validation
-- Order retrieval with cache-aside pattern
-- Event publishing for downstream services
+**Port:** `8080`
 
-**Environment Variables:**
-```
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=orderuser
-DB_PASSWORD=orderpass
-DB_NAME=order_db
-REDIS_HOST=localhost
-REDIS_PORT=6379
-RABBITMQ_URL=amqp://guest:guest@localhost:5672/
-SERVICE_PORT=8080
-```
+### Analytics Service
 
----
-
-### 2. Analytics Service
+Processes order events and provides business intelligence.
 
 **Responsibilities:**
-- Consume order events from message queue
-- Aggregate business metrics (total orders, revenue, etc.)
-- Provide analytics query endpoints
-- Cache aggregated data
+- Event consumption and processing
+- Metrics aggregation and storage
+- Analytics query endpoints
 
-**Technology:**
-- RabbitMQ Consumer
-- MySQL Database (analytics_db)
-- Redis Cache
-- REST API (Go)
+**Stack:** RabbitMQ Consumer, MySQL, Redis, REST API
 
-**Key Features:**
-- Event consumption from RabbitMQ
-- Real-time metrics aggregation
-- Analytics API endpoints
+**Port:** `8081`
 
-**Environment Variables:**
-```
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=analyticsuser
-DB_PASSWORD=analyticspass
-DB_NAME=analytics_db
-REDIS_HOST=localhost
-REDIS_PORT=6379
-RABBITMQ_URL=amqp://guest:guest@localhost:5672/
-SERVICE_PORT=8081
-```
+### Notification Worker
 
----
-
-### 3. Notification Worker
+Background service for notification delivery.
 
 **Responsibilities:**
-- Consume order events from message queue
-- Simulate notification sending (email, SMS, etc.)
-- Log notification events
-- Demonstrate event fan-out pattern
+- Event consumption
+- Notification dispatch (email, SMS)
+- Fan-out pattern demonstration
 
-**Technology:**
-- RabbitMQ Consumer
-- Event processing (in-memory)
+**Stack:** RabbitMQ Consumer
 
-**Key Features:**
-- Background event processing
-- Multiple consumer pattern demonstration
-- Extensible notification system
+**Port:** Background process (no HTTP endpoint)
 
-**Environment Variables:**
-```
-RABBITMQ_URL=amqp://guest:guest@localhost:5672/
-```
-
-## Project Structure
-
-```
-event-drive-order-system/
-├── services/
-│   ├── order-service/
-│   │   ├── cmd/order-api/
-│   │   │   └── main.go                 # Application entry point
-│   │   ├── internal/
-│   │   │   ├── handler/                # HTTP request handlers
-│   │   │   │   └── order_handler.go
-│   │   │   ├── service/                # Business logic layer
-│   │   │   │   └── order_service.go
-│   │   │   ├── repository/             # Data access layer
-│   │   │   │   └── order_repository.go
-│   │   │   ├── mq/                     # Message queue (RabbitMQ)
-│   │   │   │   └── publisher.go
-│   │   │   ├── cache/                  # Redis caching
-│   │   │   │   └── order_cache.go
-│   │   │   └── model/                  # Domain models
-│   │   │       └── order.go
-│   │   ├── migrations/                 # Database schema
-│   │   ├── tests/
-│   │   │   └── order_service_test.go
-│   │   ├── go.mod
-│   │   ├── go.sum
-│   │   └── Dockerfile
-│   │
-│   ├── analytics-service/
-│   │   ├── cmd/analytics-api/
-│   │   │   └── main.go
-│   │   ├── internal/
-│   │   │   ├── handler/
-│   │   │   ├── service/
-│   │   │   ├── repository/
-│   │   │   ├── mq/
-│   │   │   ├── cache/
-│   │   │   └── model/
-│   │   ├── migrations/
-│   │   ├── go.mod
-│   │   └── Dockerfile
-│   │
-│   └── notification-worker/
-│       ├── cmd/notification-worker/
-│       │   └── main.go
-│       ├── internal/
-│       │   ├── mq/
-│       │   └── model/
-│       ├── go.mod
-│       └── Dockerfile
-│
-├── docs/                              # Architecture and design docs
-├── scripts/                           # Utility scripts
-├── docker-compose.yml                 # Local development environment
-├── Makefile                           # Build and development targets
-├── test.sh                            # Test runner script
-├── LICENSE
-└── README.md
-```
-
-## Quick Start
+## Getting Started
 
 ### Prerequisites
 
-- Docker & Docker Compose (v2.10+)
-- Go 1.21+ (optional, for local development)
-- Make (optional, for convenience commands)
+- Docker & Docker Compose v2.10+
+- Go 1.21+ (for local development)
+- Make (optional)
 
-### Running with Docker Compose
+### Quick Start
 
 ```bash
-# Start all services and dependencies
+# Clone the repository
+git clone https://github.com/andev0x/event-drive-order-system.git
+cd event-drive-order-system
+
+# Start all services
 docker compose up --build
 
-# Wait for services to be healthy (~30 seconds)
-# Services are ready when all containers show "healthy" status
+# Verify services are healthy (allow ~30 seconds for initialization)
+docker compose ps
 ```
 
-**Service Endpoints:**
-- Order Service: `http://localhost:8080`
-- Analytics Service: `http://localhost:8081`
-- RabbitMQ Management: `http://localhost:15672` (guest/guest)
-- MySQL (Order DB): `localhost:3306` (user: orderuser, pass: orderpass)
-- MySQL (Analytics DB): `localhost:3307` (user: analyticsuser, pass: analyticspass)
-- Redis: `localhost:6379`
+### Service Endpoints
 
-### Quick Test
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| Order Service | http://localhost:8080 | - |
+| Analytics Service | http://localhost:8081 | - |
+| RabbitMQ Management | http://localhost:15672 | guest / guest |
+| MySQL (Order DB) | localhost:3306 | orderuser / orderpass |
+| MySQL (Analytics DB) | localhost:3307 | analyticsuser / analyticspass |
+| Redis | localhost:6379 | - |
+
+### Verify Installation
 
 ```bash
-# Create an order (using Makefile)
+# Create a test order
 make order
 
-# Get analytics summary
+# Retrieve analytics summary
 make analytics
 
 # View notification worker logs
 make notification
 ```
 
-### Stopping Services
+### Shutdown
 
 ```bash
 # Stop all services
 docker compose down
 
-# Remove volumes (clean state)
+# Stop and remove volumes (clean state)
 docker compose down -v
 ```
 
-## API Documentation
+## API Reference
 
 ### Order Service
 
 #### Create Order
 
-Create a new order in the system. This triggers an async event that gets consumed by analytics and notification services.
-
-**Request:**
 ```http
 POST /orders
 Content-Type: application/json
+```
 
+**Request Body:**
+```json
 {
   "customer_id": "customer-123",
   "product_id": "product-456",
@@ -320,34 +213,15 @@ Content-Type: application/json
 }
 ```
 
-**Error Response (400 Bad Request):**
-```json
-{
-  "error": "invalid_request",
-  "message": "total_amount must be greater than 0",
-  "details": {}
-}
-```
-
-**Using curl:**
+**cURL Example:**
 ```bash
 curl -X POST http://localhost:8080/orders \
   -H "Content-Type: application/json" \
-  -d '{
-    "customer_id": "customer-123",
-    "product_id": "product-456",
-    "quantity": 2,
-    "total_amount": 99.99
-  }'
+  -d '{"customer_id":"customer-123","product_id":"product-456","quantity":2,"total_amount":99.99}'
 ```
-
----
 
 #### Get Order
 
-Retrieve a previously created order. Results are cached in Redis for subsequent requests.
-
-**Request:**
 ```http
 GET /orders/{order_id}
 ```
@@ -366,29 +240,10 @@ GET /orders/{order_id}
 }
 ```
 
-**Error Response (404 Not Found):**
-```json
-{
-  "error": "not_found",
-  "message": "order not found",
-  "details": {}
-}
-```
-
-**Using curl:**
-```bash
-curl http://localhost:8080/orders/order-uuid-xxxx
-```
-
----
-
 ### Analytics Service
 
 #### Get Summary
 
-Retrieve aggregated analytics metrics. Results are cached and updated as new orders arrive via events.
-
-**Request:**
 ```http
 GET /analytics/summary
 ```
@@ -403,89 +258,118 @@ GET /analytics/summary
 }
 ```
 
-**Using curl:**
-```bash
-curl http://localhost:8081/analytics/summary
+### Error Responses
+
+All endpoints return errors in a consistent format:
+
+```json
+{
+  "error": "error_code",
+  "message": "Human-readable description",
+  "details": {}
+}
 ```
 
----
+| HTTP Status | Error Code | Description |
+|-------------|------------|-------------|
+| 400 | `invalid_request` | Malformed request or validation failure |
+| 404 | `not_found` | Requested resource does not exist |
+| 500 | `internal_error` | Server-side error |
 
-## Development Guide
+## Development
 
-### Local Development Setup
+### Project Structure
+
+```
+event-drive-order-system/
+├── services/
+│   ├── order-service/
+│   │   ├── cmd/order-api/          # Application entry point
+│   │   ├── internal/
+│   │   │   ├── api/                # HTTP handlers
+│   │   │   ├── order/              # Domain logic
+│   │   │   └── infrastructure/     # External dependencies
+│   │   ├── migrations/             # Database schemas
+│   │   └── Dockerfile
+│   ├── analytics-service/          # Similar structure
+│   └── notification-worker/        # Similar structure
+├── pkg/                            # Shared packages
+│   ├── config/                     # Configuration utilities
+│   ├── database/                   # Database connections
+│   ├── events/                     # Event definitions
+│   ├── httputil/                   # HTTP utilities
+│   ├── rabbitmq/                   # Message queue client
+│   └── redis/                      # Cache client
+├── docs/                           # Documentation
+├── scripts/                        # Utility scripts
+├── docker-compose.yml
+├── Makefile
+└── README.md
+```
+
+### Local Development
 
 ```bash
-# Clone the repository
-git clone https://github.com/andev0x/event-drive-order-system.git
-cd event-drive-order-system
-
-# Start dependencies only (MySQL, Redis, RabbitMQ)
+# Start infrastructure only
 docker compose up -d order-db analytics-db redis rabbitmq
 
-# In separate terminals, run each service locally:
-
-# Terminal 1: Order Service
-cd services/order-service
-go run cmd/order-api/main.go
-
-# Terminal 2: Analytics Service
-cd services/analytics-service
-go run cmd/analytics-api/main.go
-
-# Terminal 3: Notification Worker
-cd services/notification-worker
-go run cmd/notification-worker/main.go
+# Run services locally (in separate terminals)
+cd services/order-service && go run cmd/order-api/main.go
+cd services/analytics-service && go run cmd/analytics-api/main.go
+cd services/notification-worker && go run cmd/notification-worker/main.go
 ```
 
-### Available Make Commands
+### Make Commands
 
 ```bash
-make help              # Show all available commands
-make tidy              # Tidy go modules for all services
-make test              # Run all tests
-make build             # Build Docker images
-make build-go          # Build Go binaries locally
-make up                # Start all services
-make down              # Stop all services
-make logs              # Stream logs from all services
-make restart           # Restart all services
-make clean             # Remove containers and volumes
-make order             # Create a test order
-make analytics         # Fetch analytics summary
-make notification      # View notification worker logs
+make help          # Display available commands
+make tidy          # Tidy Go modules
+make test          # Run all tests
+make build         # Build Docker images
+make build-go      # Build Go binaries
+make up            # Start all services
+make down          # Stop all services
+make logs          # Stream service logs
+make restart       # Restart all services
+make clean         # Remove containers and volumes
 ```
 
-### Code Style & Standards
+### Environment Variables
 
-This project follows Go best practices:
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DB_HOST` | localhost | Database host |
+| `DB_PORT` | 3306 | Database port |
+| `DB_USER` | - | Database username |
+| `DB_PASSWORD` | - | Database password |
+| `DB_NAME` | - | Database name |
+| `REDIS_HOST` | localhost | Redis host |
+| `REDIS_PORT` | 6379 | Redis port |
+| `RABBITMQ_URL` | - | RabbitMQ connection URL |
+| `SERVICE_PORT` | - | HTTP server port |
 
-- **Package Structure**: Domain-driven design with layered architecture
-- **Error Handling**: Explicit error handling without panics in production code
-- **Naming**: Clear, descriptive names following Go conventions
-- **Comments**: Package-level documentation and exported function comments
-- **Testing**: Unit tests for business logic with mocked dependencies
+### Code Standards
 
-### Adding a New Service
+This project adheres to Go best practices:
 
-1. Create directory structure in `services/new-service/`
-2. Initialize Go module: `go mod init github.com/andev0x/new-service`
-3. Implement layers: handler → service → repository
-4. Add Dockerfile to service root
-5. Update docker-compose.yml with service definition
-6. Update Makefile with new service
+- **Architecture:** Domain-driven design with clean architecture layers
+- **Error Handling:** Explicit error propagation without panics in production code
+- **Naming:** Clear, descriptive identifiers following Go conventions
+- **Documentation:** Package-level comments and exported function documentation
+- **Testing:** Unit tests with mocked dependencies for business logic
 
 ## Testing
 
-### Running Tests
+### Run Tests
 
 ```bash
 # Run all tests
 make test
 
-# Run tests for specific service
+# Run tests for a specific service
 cd services/order-service && go test ./...
 
-# Run with coverage
+# Run with coverage report
 go test -cover ./...
 
 # Run with verbose output
@@ -497,326 +381,179 @@ go test -run TestOrderServiceCreate ./...
 
 ### Testing Strategy
 
-**Unit Tests:**
-- Business logic in service layer
-- Repository interfaces with mocked dependencies
-- Edge cases and error handling
-
-**Integration Tests:**
-- Database operations
-- Cache behavior
-- Message queue integration
-
-**Test Example:**
-```bash
-cd services/order-service && go test -v ./tests/
-```
+| Type | Scope | Location |
+|------|-------|----------|
+| Unit | Business logic, service layer | `*_test.go` files |
+| Integration | Database, cache, message queue | `tests/` directories |
 
 ## Deployment
 
-### Docker Compose (Development)
+### Docker Compose
 
 ```bash
 docker compose up --build
 ```
 
-### Docker Build Manually
+### Manual Docker Build
 
 ```bash
-# Build individual services
+# Build images
 docker build -t order-service:latest services/order-service/
 docker build -t analytics-service:latest services/analytics-service/
 docker build -t notification-worker:latest services/notification-worker/
 
-# Run services with docker run
+# Run container
 docker run -p 8080:8080 \
   -e DB_HOST=host.docker.internal \
   -e RABBITMQ_URL=amqp://guest:guest@host.docker.internal:5672/ \
   order-service:latest
 ```
 
-### Environment Configuration
-
-Create a `.env` file in the project root:
-
-```env
-# Database Configuration
-DB_ROOT_PASSWORD=rootpassword
-
-# Logging
-LOG_LEVEL=info
-
-# Application
-ENVIRONMENT=development
-```
-
-## Monitoring & Observability
+## Monitoring
 
 ### Structured Logging
 
-All services implement structured logging:
+All services emit structured JSON logs:
 
+```json
+{
+  "level": "info",
+  "service": "order-service",
+  "event": "order_created",
+  "order_id": "123",
+  "timestamp": "2026-01-09T12:34:56Z"
+}
 ```
-{"level":"info","service":"order-service","event":"order_created","order_id":"123","timestamp":"2026-01-09T12:34:56Z"}
-```
 
-### Metrics Endpoint
+### Metrics
 
-Metrics are exposed on `/metrics` endpoint (Prometheus format):
+Prometheus-format metrics are available at `/metrics`:
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `orders_created_total` | Counter | Total orders created |
+| `orders_created_duration_seconds` | Histogram | Order creation latency |
+| `http_request_duration_seconds` | Histogram | HTTP request latency |
+| `http_requests_total` | Counter | Total HTTP requests |
+
+### RabbitMQ Management
+
+Monitor queues and message throughput at http://localhost:15672 (guest/guest).
+
+### Health Monitoring
 
 ```bash
-curl http://localhost:8080/metrics
-```
-
-**Available Metrics:**
-- `orders_created_total` - Total orders created (counter)
-- `orders_created_duration_seconds` - Order creation latency (histogram)
-- `http_request_duration_seconds` - HTTP request latency (histogram)
-- `http_requests_total` - Total HTTP requests (counter)
-
-### RabbitMQ Management UI
-
-Monitor queue health and message throughput:
-
-```
-http://localhost:15672
-Username: guest
-Password: guest
-```
-
-### Health Checks
-
-Each service provides basic health checks via logs. Monitor service health:
-
-```bash
-# Check service logs
 docker compose logs order-service
 docker compose logs analytics-service
 docker compose logs notification-worker
 ```
 
-## Design Decisions
-
-### Why Event-Driven Architecture?
-
-**Benefits:**
-- **Decoupling**: Services don't know about each other
-- **Scalability**: Handle traffic spikes independently
-- **Resilience**: Failure in one service doesn't affect others
-- **Auditability**: Complete event history
-
-**Trade-offs:**
-- Increased complexity in distributed tracing
-- Potential message duplication handling
-- Eventual consistency instead of strong consistency
-
-### Why RabbitMQ?
-
-- **Reliability**: Message persistence and acknowledgments
-- **Flexibility**: Multiple exchange types and routing patterns
-- **Management**: Built-in UI for monitoring
-- **Proven**: Battle-tested in production systems
-- **Ecosystem**: Excellent Go client libraries
-
-### Why Database-Per-Service?
-
-**Advantages:**
-- Services can choose optimal database technology
-- Independent scaling and tuning
-- No bottleneck shared database
-- Clear service boundaries
-
-**Considerations:**
-- No ACID transactions across services
-- Data consistency eventual (not immediate)
-- Join operations across services require application logic
-
-### Why Redis Cache?
-
-- **Performance**: In-memory data structure store
-- **Simplicity**: Cache-aside pattern is straightforward
-- **Ubiquity**: Industry standard for caching
-
-**Cache Invalidation Strategy:**
-- TTL-based expiration
-- Manual invalidation on data updates
-- Cache warming during service startup
-
-## Event Schema
-
-### OrderCreated Event
-
-Emitted when an order is successfully created.
-
-```json
-{
-  "event_type": "OrderCreated",
-  "event_id": "event-uuid-xxxx",
-  "timestamp": "2026-01-09T12:34:56Z",
-  "data": {
-    "order_id": "order-uuid-xxxx",
-    "customer_id": "customer-123",
-    "product_id": "product-456",
-    "quantity": 2,
-    "total_amount": 99.99
-  }
-}
-```
-
-### OrderProcessed Event
-
-Emitted when an order is processed by the analytics service.
-
-```json
-{
-  "event_type": "OrderProcessed",
-  "event_id": "event-uuid-yyyy",
-  "timestamp": "2026-01-09T12:35:00Z",
-  "data": {
-    "order_id": "order-uuid-xxxx",
-    "processed_by": "analytics-service",
-    "metrics_updated": true
-  }
-}
-```
-
-## Future Improvements
-
-- [ ] **gRPC Communication**: High-performance inter-service communication
-- [ ] **Dead-Letter Queue (DLQ)**: Handle failed message processing
-- [ ] **Distributed Tracing**: OpenTelemetry integration with Jaeger
-- [ ] **Circuit Breaker Pattern**: Prevent cascading failures
-- [ ] **Rate Limiting**: Protect services from overload
-- [ ] **Authentication & Authorization**: JWT tokens and RBAC
-- [ ] **API Versioning**: Support multiple API versions
-- [ ] **GraphQL Gateway**: Alternative query interface
-- [ ] **Kubernetes Deployment**: Production container orchestration
-- [ ] **Blue-Green Deployment**: Zero-downtime deployments
-- [ ] **Kafka Migration**: Consider for higher throughput requirements
-- [ ] **CQRS Pattern**: Separate read and write models
-- [ ] **Saga Pattern**: Distributed transactions across services
-
 ## Troubleshooting
 
-### Service Won't Start
+### Service Connection Errors
 
-**Symptom**: `Connection refused` errors
-
-**Solutions:**
 ```bash
-# Ensure all dependencies are healthy
+# Verify all containers are healthy
 docker compose ps
 
 # Check service logs
 docker compose logs [service-name]
 
-# Verify database connectivity
+# Test database connectivity
 docker compose exec order-db mysql -u orderuser -p -e "SELECT 1;"
 
-# Restart services
+# Full restart
 docker compose down -v && docker compose up --build
 ```
 
-### High Memory Usage
+### Messages Not Processing
 
-**Symptom**: Services consuming excessive memory
-
-**Solutions:**
-- Check for memory leaks in logs
-- Verify Redis key expiration is working: `docker exec redis redis-cli INFO memory`
-- Reduce cache TTL values
-- Monitor with: `docker stats`
-
-### Messages Not Being Processed
-
-**Symptom**: Orders created but analytics not updating
-
-**Solutions:**
 ```bash
 # Check RabbitMQ queue status
 curl -u guest:guest http://localhost:15672/api/queues
 
 # Verify consumer is running
 docker compose logs analytics-service | grep "consumer"
-
-# Check for dead-letter messages
-docker compose logs -f analytics-service
 ```
 
-### Database Connection Issues
+### Redis Cache Issues
 
-**Symptom**: `Access denied` or connection timeouts
-
-**Solutions:**
-```bash
-# Test connection manually
-docker compose exec order-db mysql -h order-db -u orderuser -porderpass -e "SELECT 1;"
-
-# Check environment variables
-docker compose config | grep DB_
-
-# Verify network connectivity
-docker compose exec order-service ping order-db
-```
-
-### Redis Cache Not Working
-
-**Symptom**: Cache hits not happening
-
-**Solutions:**
 ```bash
 # Connect to Redis CLI
 docker exec -it redis redis-cli
 
 # List all keys
-> KEYS *
+KEYS *
 
-# Check key TTL
-> TTL [key-name]
+# Check TTL
+TTL [key-name]
 
 # Flush cache
-> FLUSHALL
+FLUSHALL
 ```
+
+## Event Schema
+
+### OrderCreated
+
+```json
+{
+  "event_type": "OrderCreated",
+  "event_id": "uuid",
+  "timestamp": "2026-01-09T12:34:56Z",
+  "data": {
+    "order_id": "uuid",
+    "customer_id": "string",
+    "product_id": "string",
+    "quantity": 2,
+    "total_amount": 99.99
+  }
+}
+```
+
+### OrderProcessed
+
+```json
+{
+  "event_type": "OrderProcessed",
+  "event_id": "uuid",
+  "timestamp": "2026-01-09T12:35:00Z",
+  "data": {
+    "order_id": "uuid",
+    "processed_by": "analytics-service",
+    "metrics_updated": true
+  }
+}
+```
+
+## Roadmap
+
+- [ ] gRPC for inter-service communication
+- [ ] Dead-letter queue implementation
+- [ ] OpenTelemetry distributed tracing
+- [ ] Circuit breaker pattern
+- [ ] Rate limiting
+- [ ] JWT authentication and RBAC
+- [ ] API versioning
+- [ ] Kubernetes deployment manifests
+- [ ] CQRS and Saga patterns
 
 ## Contributing
 
-Contributions are welcome! Please follow these guidelines:
-
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes following Go best practices
-4. Write or update tests
-5. Commit with clear messages (`git commit -m 'Add amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Commit changes (`git commit -m 'Add your feature'`)
+4. Push to branch (`git push origin feature/your-feature`)
+5. Open a Pull Request
+
+Please ensure all tests pass and follow the existing code style.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
 ---
 
-## Author
+**Author:** [andev0x](https://github.com/andev0x)
 
-**andev0x** - [GitHub](https://github.com/andev0x)
-
-> Backend-focused project showcasing Go microservices, event-driven architecture, and production-ready engineering practices.
-
-### Key Learning Objectives
-
-- Microservices design and communication patterns
-- Event-driven architecture fundamentals
-- Distributed system resilience patterns
-- Go backend best practices
-- System design trade-offs and decisions
-
----
-
-**Last Updated**: January 2026
-
-**Project Status**: Active Development
-
-**Go Version**: 1.21+
-
-**License**: [MIT](LICENSE)
-
+**Go Version:** 1.21+ | **Status:** Active Development | **License:** MIT

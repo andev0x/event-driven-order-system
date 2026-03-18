@@ -10,26 +10,35 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/andev0x/analytics-service/internal/cache"
-	"github.com/andev0x/analytics-service/internal/handler"
-	"github.com/andev0x/analytics-service/internal/model"
-	"github.com/andev0x/analytics-service/internal/mq"
-	"github.com/andev0x/analytics-service/internal/repository"
-	"github.com/andev0x/analytics-service/internal/service"
+	"github.com/andev0x/analytics-service/internal/analytics"
+	"github.com/andev0x/analytics-service/internal/api"
+	"github.com/andev0x/analytics-service/internal/infrastructure/cache"
+	"github.com/andev0x/analytics-service/internal/infrastructure/messaging"
+	"github.com/andev0x/analytics-service/internal/infrastructure/persistence"
+	"github.com/andev0x/event-driven-order-system/pkg/config"
+	"github.com/andev0x/event-driven-order-system/pkg/database"
+	"github.com/andev0x/event-driven-order-system/pkg/events"
+	pkgredis "github.com/andev0x/event-driven-order-system/pkg/redis"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/redis/go-redis/v9"
 )
 
 func main() {
 	log.Println("Starting Analytics Service...")
 
-	// Load configuration from environment variables
-	config := loadConfig()
+	// Load configuration
+	cfg := loadConfig()
 
 	// Initialize database
 	log.Println("Connecting to database...")
-	db, err := repository.InitDB(config.DBHost, config.DBPort, config.DBUser, config.DBPassword, config.DBName)
+	dbCfg := database.Config{
+		Host:     cfg.DBHost,
+		Port:     cfg.DBPort,
+		User:     cfg.DBUser,
+		Password: cfg.DBPassword,
+		Name:     cfg.DBName,
+	}
+	db, err := database.Connect(dbCfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
@@ -42,7 +51,14 @@ func main() {
 
 	// Initialize Redis
 	log.Println("Connecting to Redis...")
-	redisClient := initRedisOrFatal(config)
+	redisCfg := pkgredis.Config{
+		Host: cfg.RedisHost,
+		Port: cfg.RedisPort,
+	}
+	redisClient, err := pkgredis.Connect(redisCfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize Redis: %v", err)
+	}
 	defer func() {
 		if err := redisClient.Close(); err != nil {
 			log.Printf("Error closing Redis: %v", err)
@@ -50,17 +66,22 @@ func main() {
 	}()
 	log.Println("Redis connected successfully")
 
-	// Create repository, cache, and service
-	analyticsRepo := repository.NewMySQLAnalyticsRepository(db)
-	analyticsCache := cache.NewRedisAnalyticsCache(redisClient)
-	analyticsService := service.NewAnalyticsService(analyticsRepo, analyticsCache)
+	// Create infrastructure implementations
+	analyticsRepo := persistence.NewMySQLRepository(db)
+	analyticsCache := cache.NewRedisCache(redisClient)
 
-	// Create handler
-	analyticsHandler := handler.NewAnalyticsHandler(analyticsService)
+	// Create domain service
+	analyticsService := analytics.NewService(analyticsRepo, analyticsCache)
+
+	// Create API handler
+	analyticsHandler := api.NewHandler(analyticsService)
 
 	// Initialize RabbitMQ consumer
 	log.Println("Connecting to RabbitMQ...")
-	consumer := initRabbitMQOrFatal(config)
+	consumer, err := messaging.NewRabbitMQConsumer(cfg.RabbitMQURL)
+	if err != nil {
+		log.Fatalf("Failed to initialize RabbitMQ consumer: %v", err)
+	}
 	defer func() {
 		if err := consumer.Close(); err != nil {
 			log.Printf("Error closing consumer: %v", err)
@@ -69,16 +90,12 @@ func main() {
 	log.Println("RabbitMQ connected successfully")
 
 	// Setup health checker
-	healthChecker := &handler.HealthChecker{
+	healthChecker := &api.HealthChecker{
 		DBHealthFunc: func() error {
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer cancel()
-			return db.PingContext(ctx)
+			return database.HealthCheck(db)
 		},
 		CacheHealthFunc: func() error {
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer cancel()
-			return redisClient.Ping(ctx).Err()
+			return pkgredis.HealthCheck(redisClient)
 		},
 		MQHealthFunc: func() error {
 			return consumer.HealthCheck()
@@ -89,10 +106,8 @@ func main() {
 	// Setup router
 	router := mux.NewRouter()
 
-	// Health check
+	// Health and metrics endpoints
 	router.HandleFunc("/health", analyticsHandler.HealthCheck).Methods("GET")
-
-	// Metrics endpoint
 	router.Handle("/metrics", promhttp.Handler()).Methods("GET")
 
 	// Analytics endpoints
@@ -100,7 +115,7 @@ func main() {
 
 	// Setup server
 	srv := &http.Server{
-		Addr:         ":" + config.ServicePort,
+		Addr:         ":" + cfg.ServicePort,
 		Handler:      router,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
@@ -110,11 +125,16 @@ func main() {
 	// Start consuming events
 	ctx, cancel := context.WithCancel(context.Background())
 
-	startConsumingOrFatal(ctx, consumer, analyticsService)
+	err = consumer.StartConsuming(ctx, func(event *events.OrderCreated) error {
+		return analyticsService.ProcessOrderEvent(context.Background(), event)
+	})
+	if err != nil {
+		log.Fatalf("Failed to start consuming: %v", err)
+	}
 
 	// Start server in a goroutine
 	go func() {
-		log.Printf("Analytics Service listening on port %s", config.ServicePort)
+		log.Printf("Analytics Service listening on port %s", cfg.ServicePort)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start server: %v", err)
 		}
@@ -138,7 +158,7 @@ func main() {
 	log.Println("Server exited gracefully")
 }
 
-// Config holds application configuration
+// Config holds application configuration.
 type Config struct {
 	DBHost      string
 	DBPort      string
@@ -151,52 +171,17 @@ type Config struct {
 	ServicePort string
 }
 
-// loadConfig loads configuration from environment variables
+// loadConfig loads configuration from environment variables.
 func loadConfig() Config {
 	return Config{
-		DBHost:      getEnv("DB_HOST", "localhost"),
-		DBPort:      getEnv("DB_PORT", "3306"),
-		DBUser:      getEnv("DB_USER", "analyticsuser"),
-		DBPassword:  getEnv("DB_PASSWORD", "analyticspass"),
-		DBName:      getEnv("DB_NAME", "analytics_db"),
-		RedisHost:   getEnv("REDIS_HOST", "localhost"),
-		RedisPort:   getEnv("REDIS_PORT", "6379"),
-		RabbitMQURL: getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
-		ServicePort: getEnv("SERVICE_PORT", "8081"),
-	}
-}
-
-// getEnv gets an environment variable or returns a default value
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
-// initRedisOrFatal initializes Redis or exits with fatal error
-func initRedisOrFatal(config Config) *redis.Client {
-	redisClient, err := cache.InitRedis(config.RedisHost, config.RedisPort)
-	if err != nil {
-		log.Fatalf("Failed to initialize Redis: %v", err)
-	}
-	return redisClient
-}
-
-// initRabbitMQOrFatal initializes RabbitMQ consumer or exits with fatal error
-func initRabbitMQOrFatal(config Config) *mq.RabbitMQConsumer {
-	consumer, err := mq.NewRabbitMQConsumer(config.RabbitMQURL)
-	if err != nil {
-		log.Fatalf("Failed to initialize RabbitMQ consumer: %v", err)
-	}
-	return consumer
-}
-
-// startConsumingOrFatal starts consuming events or exits with fatal error
-func startConsumingOrFatal(ctx context.Context, consumer *mq.RabbitMQConsumer, svc *service.AnalyticsService) {
-	if err := consumer.StartConsuming(ctx, func(event *model.OrderCreatedEvent) error {
-		return svc.ProcessOrderEvent(context.Background(), event)
-	}); err != nil {
-		log.Fatalf("Failed to start consuming: %v", err)
+		DBHost:      config.GetEnv("DB_HOST", "localhost"),
+		DBPort:      config.GetEnv("DB_PORT", "3306"),
+		DBUser:      config.GetEnv("DB_USER", "analyticsuser"),
+		DBPassword:  config.GetEnv("DB_PASSWORD", "analyticspass"),
+		DBName:      config.GetEnv("DB_NAME", "analytics_db"),
+		RedisHost:   config.GetEnv("REDIS_HOST", "localhost"),
+		RedisPort:   config.GetEnv("REDIS_PORT", "6379"),
+		RabbitMQURL: config.GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
+		ServicePort: config.GetEnv("SERVICE_PORT", "8081"),
 	}
 }
