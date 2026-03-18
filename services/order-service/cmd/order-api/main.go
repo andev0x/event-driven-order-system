@@ -10,11 +10,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/andev0x/order-service/internal/cache"
-	"github.com/andev0x/order-service/internal/handler"
-	"github.com/andev0x/order-service/internal/mq"
-	"github.com/andev0x/order-service/internal/repository"
-	"github.com/andev0x/order-service/internal/service"
+	"github.com/andev0x/event-driven-order-system/pkg/config"
+	"github.com/andev0x/event-driven-order-system/pkg/database"
+	pkgredis "github.com/andev0x/event-driven-order-system/pkg/redis"
+	"github.com/andev0x/order-service/internal/api"
+	"github.com/andev0x/order-service/internal/infrastructure/cache"
+	"github.com/andev0x/order-service/internal/infrastructure/messaging"
+	"github.com/andev0x/order-service/internal/infrastructure/persistence"
+	"github.com/andev0x/order-service/internal/order"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -22,12 +25,19 @@ import (
 func main() {
 	log.Println("Starting Order Service...")
 
-	// Load configuration from environment variables
-	config := loadConfig()
+	// Load configuration
+	cfg := loadConfig()
 
 	// Initialize database
 	log.Println("Connecting to database...")
-	db, err := repository.InitDB(config.DBHost, config.DBPort, config.DBUser, config.DBPassword, config.DBName)
+	dbCfg := database.Config{
+		Host:     cfg.DBHost,
+		Port:     cfg.DBPort,
+		User:     cfg.DBUser,
+		Password: cfg.DBPassword,
+		Name:     cfg.DBName,
+	}
+	db, err := database.Connect(dbCfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
@@ -40,7 +50,11 @@ func main() {
 
 	// Initialize Redis
 	log.Println("Connecting to Redis...")
-	redisClient, err := cache.InitRedis(config.RedisHost, config.RedisPort)
+	redisCfg := pkgredis.Config{
+		Host: cfg.RedisHost,
+		Port: cfg.RedisPort,
+	}
+	redisClient, err := pkgredis.Connect(redisCfg)
 	if err != nil {
 		log.Printf("Failed to initialize Redis: %v", err)
 		return
@@ -54,7 +68,7 @@ func main() {
 
 	// Initialize RabbitMQ publisher
 	log.Println("Connecting to RabbitMQ...")
-	publisher, err := mq.NewRabbitMQPublisher(config.RabbitMQURL)
+	publisher, err := messaging.NewRabbitMQPublisher(cfg.RabbitMQURL)
 	if err != nil {
 		log.Printf("Failed to initialize RabbitMQ publisher: %v", err)
 		return
@@ -66,25 +80,23 @@ func main() {
 	}()
 	log.Println("RabbitMQ connected successfully")
 
-	// Create repository, cache, and service
-	orderRepo := repository.NewMySQLOrderRepository(db)
-	orderCache := cache.NewRedisOrderCache(redisClient)
-	orderService := service.NewOrderService(orderRepo, orderCache, publisher)
+	// Create infrastructure implementations
+	orderRepo := persistence.NewMySQLRepository(db)
+	orderCache := cache.NewRedisCache(redisClient)
 
-	// Create handler
-	orderHandler := handler.NewOrderHandler(orderService)
+	// Create domain service
+	orderService := order.NewService(orderRepo, orderCache, publisher)
+
+	// Create API handler
+	orderHandler := api.NewHandler(orderService)
 
 	// Setup health checker
-	healthChecker := &handler.HealthChecker{
+	healthChecker := &api.HealthChecker{
 		DBHealthFunc: func() error {
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer cancel()
-			return db.PingContext(ctx)
+			return database.HealthCheck(db)
 		},
 		CacheHealthFunc: func() error {
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer cancel()
-			return redisClient.Ping(ctx).Err()
+			return pkgredis.HealthCheck(redisClient)
 		},
 		MQHealthFunc: func() error {
 			return publisher.HealthCheck()
@@ -95,10 +107,8 @@ func main() {
 	// Setup router
 	router := mux.NewRouter()
 
-	// Health check
+	// Health and metrics endpoints
 	router.HandleFunc("/health", orderHandler.HealthCheck).Methods("GET")
-
-	// Metrics endpoint
 	router.Handle("/metrics", promhttp.Handler()).Methods("GET")
 
 	// Order endpoints
@@ -108,7 +118,7 @@ func main() {
 
 	// Setup server
 	srv := &http.Server{
-		Addr:         ":" + config.ServicePort,
+		Addr:         ":" + cfg.ServicePort,
 		Handler:      router,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
@@ -117,7 +127,7 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		log.Printf("Order Service listening on port %s", config.ServicePort)
+		log.Printf("Order Service listening on port %s", cfg.ServicePort)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start server: %v", err)
 		}
@@ -140,7 +150,7 @@ func main() {
 	log.Println("Server exited gracefully")
 }
 
-// Config holds application configuration
+// Config holds application configuration.
 type Config struct {
 	DBHost      string
 	DBPort      string
@@ -153,25 +163,17 @@ type Config struct {
 	ServicePort string
 }
 
-// loadConfig loads configuration from environment variables
+// loadConfig loads configuration from environment variables.
 func loadConfig() Config {
 	return Config{
-		DBHost:      getEnv("DB_HOST", "localhost"),
-		DBPort:      getEnv("DB_PORT", "3306"),
-		DBUser:      getEnv("DB_USER", "orderuser"),
-		DBPassword:  getEnv("DB_PASSWORD", "orderpass"),
-		DBName:      getEnv("DB_NAME", "order_db"),
-		RedisHost:   getEnv("REDIS_HOST", "localhost"),
-		RedisPort:   getEnv("REDIS_PORT", "6379"),
-		RabbitMQURL: getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
-		ServicePort: getEnv("SERVICE_PORT", "8080"),
+		DBHost:      config.GetEnv("DB_HOST", "localhost"),
+		DBPort:      config.GetEnv("DB_PORT", "3306"),
+		DBUser:      config.GetEnv("DB_USER", "orderuser"),
+		DBPassword:  config.GetEnv("DB_PASSWORD", "orderpass"),
+		DBName:      config.GetEnv("DB_NAME", "order_db"),
+		RedisHost:   config.GetEnv("REDIS_HOST", "localhost"),
+		RedisPort:   config.GetEnv("REDIS_PORT", "6379"),
+		RabbitMQURL: config.GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
+		ServicePort: config.GetEnv("SERVICE_PORT", "8080"),
 	}
-}
-
-// getEnv gets an environment variable or returns a default value
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
 }

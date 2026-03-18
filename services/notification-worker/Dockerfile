@@ -3,20 +3,16 @@ FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
 
-# Install necessary build dependencies
 RUN apk add --no-cache git
 
-# Copy go mod files
-COPY go.mod go.sum* ./
+COPY services/notification-worker/go.mod services/notification-worker/go.sum* ./services/notification-worker/
+COPY pkg ./pkg
+COPY services/notification-worker/. ./services/notification-worker
 
-# Download dependencies
+WORKDIR /app/services/notification-worker
 RUN go mod download
 
-# Copy source code
-COPY . .
-
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/notification-worker/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/bin/notification-worker ./cmd/notification-worker/main.go
 
 # Final stage
 FROM alpine:latest
@@ -25,8 +21,6 @@ RUN apk --no-cache add ca-certificates
 
 WORKDIR /root/
 
-# Copy the binary from builder
-COPY --from=builder /app/main .
+COPY --from=builder /app/bin/notification-worker ./main
 
-# Run the worker
 CMD ["./main"]
