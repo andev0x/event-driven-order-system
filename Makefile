@@ -41,7 +41,7 @@ test:
 
 build:
 	@echo "Building Docker images..."
-	docker compose build
+	docker-compose build
 	@echo "Build completed."
 
 build-go:
@@ -53,19 +53,19 @@ build-go:
 
 up:
 	@echo "Starting services..."
-	docker compose up -d
+	docker-compose up -d
 	@echo "Services started."
 
 down:
 	@echo "Stopping services..."
-	docker compose down
+	docker-compose down
 
 logs:
-	docker compose logs -f
+	docker-compose logs -f
 
 clean:
 	@echo "Cleaning up..."
-	docker compose down -v
+	docker-compose down -v
 	@echo "Cleanup completed."
 
 restart: down up
@@ -84,4 +84,4 @@ analytics:
 
 notification:
 	@echo "Notification worker logs (last 20 lines):"
-	docker compose logs --tail=20 notification-worker
+	docker-compose logs --tail=20 notification-worker
