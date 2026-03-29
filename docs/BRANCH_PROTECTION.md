@@ -71,7 +71,7 @@ Save this as `setup-branch-protection.sh` and run it:
 #!/bin/bash
 
 # Repository (format: owner/repo)
-REPO="andev0x/event-drive-order-system"
+REPO="andev0x/event-driven-order-system"
 BRANCH="main"
 
 echo "Setting up branch protection for $REPO on branch $BRANCH..."
@@ -108,7 +108,7 @@ chmod +x setup-branch-protection.sh
 For a simple setup, run this single command:
 
 ```bash
-gh api repos/andev0x/event-drive-order-system/branches/main/protection \
+gh api repos/andev0x/event-driven-order-system/branches/main/protection \
   --method PUT \
   --field required_status_checks[strict]=true \
   --field required_pull_request_reviews[required_approving_review_count]=1 \
@@ -127,7 +127,7 @@ To verify that branch protection is set up correctly:
 
 ### Using GitHub CLI:
 ```bash
-gh api repos/andev0x/event-drive-order-system/branches/main/protection
+gh api repos/andev0x/event-driven-order-system/branches/main/protection
 ```
 
 ### Test it:

@@ -197,7 +197,7 @@ cd services/order-service && go test -v ./tests/...
 ## 📁 Project Structure
 
 ```
-event-drive-order-system/
+event-driven-order-system/
 ├── docker-compose.yml          # Service orchestration
 ├── Makefile                    # Convenience commands
 ├── test.sh                     # Automated test script

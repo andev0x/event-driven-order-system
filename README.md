@@ -1,4 +1,4 @@
-# Event-Driven Order System
+# Event-driven Order System
 
 A production-grade event-driven order management system built with Go, demonstrating scalable microservices architecture, asynchronous event processing, and distributed system design patterns.
 
@@ -24,7 +24,7 @@ A production-grade event-driven order management system built with Go, demonstra
 | Feature | Description |
 |---------|-------------|
 | Microservices Architecture | Independent services with well-defined responsibilities |
-| Event-Driven Communication | Asynchronous messaging via RabbitMQ for loose coupling |
+| Event-driven Communication | Asynchronous messaging via RabbitMQ for loose coupling |
 | Database-per-Service | Isolated data stores ensuring service autonomy |
 | Cache-Aside Pattern | Redis-based caching for optimized read performance |
 | Clean Architecture | Layered design separating handlers, services, and repositories |
@@ -79,7 +79,7 @@ A production-grade event-driven order management system built with Go, demonstra
 2. **Database Isolation** - Each service owns and manages its data independently
 3. **Asynchronous-First** - Event-driven design enables scalability and resilience
 4. **Failure Isolation** - Service failures are contained and do not cascade
-5. **Contract-Driven** - Well-defined event schemas for inter-service communication
+5. **Contract-driven** - Well-defined event schemas for inter-service communication
 
 ## Services
 
@@ -134,8 +134,8 @@ Background service for notification delivery.
 
 ```bash
 # Clone the repository
-git clone https://github.com/andev0x/event-drive-order-system.git
-cd event-drive-order-system
+git clone https://github.com/andev0x/event-driven-order-system.git
+cd event-driven-order-system
 
 # Start all services
 docker compose up --build
@@ -281,7 +281,7 @@ All endpoints return errors in a consistent format:
 ### Project Structure
 
 ```
-event-drive-order-system/
+event-driven-order-system/
 ├── services/
 │   ├── order-service/
 │   │   ├── cmd/order-api/          # Application entry point
