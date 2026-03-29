@@ -1,4 +1,4 @@
-module github.com/andev0x/event-drive-order-system/pkg
+module github.com/andev0x/event-driven-order-system/pkg
 
 go 1.21
 

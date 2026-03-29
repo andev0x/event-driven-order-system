@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-REPO="andev0x/event-drive-order-system"
+REPO="andev0x/event-driven-order-system"
 BRANCHES=("main" "develop")
 
 echo -e "${GREEN}Branch Protection Setup for $REPO${NC}"
