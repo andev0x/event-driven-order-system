@@ -11,3 +11,11 @@ var (
 	ErrOrderNotFound       = errors.New("order not found")
 	ErrOrderCreationFailed = errors.New("failed to create order")
 )
+
+// IsValidationError reports whether an error is caused by invalid input.
+func IsValidationError(err error) bool {
+	return errors.Is(err, ErrMissingCustomerID) ||
+		errors.Is(err, ErrMissingProductID) ||
+		errors.Is(err, ErrInvalidQuantity) ||
+		errors.Is(err, ErrInvalidTotalAmount)
+}

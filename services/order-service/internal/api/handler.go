@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -39,16 +41,30 @@ func (h *Handler) SetHealthChecker(hc *HealthChecker) {
 
 // CreateOrder handles POST /orders
 func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
 	var req order.CreateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "Invalid request payload")
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid request payload")
+		return
+	}
+
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		httputil.RespondError(w, http.StatusBadRequest, "request body must contain only one JSON object")
 		return
 	}
 
 	o, err := h.service.Create(r.Context(), &req)
 	if err != nil {
+		if order.IsValidationError(err) {
+			httputil.RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
 		log.Printf("Error creating order: %v", err)
-		httputil.RespondError(w, http.StatusInternalServerError, err.Error())
+		httputil.RespondError(w, http.StatusInternalServerError, "failed to create order")
 		return
 	}
 
@@ -84,15 +100,33 @@ func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 	offset := 0
 
 	if limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil {
-			limit = l
+		l, err := strconv.Atoi(limitStr)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadRequest, "limit must be a valid integer")
+			return
 		}
+
+		if l <= 0 {
+			httputil.RespondError(w, http.StatusBadRequest, "limit must be greater than 0")
+			return
+		}
+
+		limit = l
 	}
 
 	if offsetStr != "" {
-		if o, err := strconv.Atoi(offsetStr); err == nil {
-			offset = o
+		o, err := strconv.Atoi(offsetStr)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadRequest, "offset must be a valid integer")
+			return
 		}
+
+		if o < 0 {
+			httputil.RespondError(w, http.StatusBadRequest, "offset must be greater than or equal to 0")
+			return
+		}
+
+		offset = o
 	}
 
 	orders, err := h.service.List(r.Context(), limit, offset)

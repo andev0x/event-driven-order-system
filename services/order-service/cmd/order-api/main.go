@@ -12,6 +12,7 @@ import (
 
 	"github.com/andev0x/event-driven-order-system/pkg/config"
 	"github.com/andev0x/event-driven-order-system/pkg/database"
+	"github.com/andev0x/event-driven-order-system/pkg/httputil"
 	pkgredis "github.com/andev0x/event-driven-order-system/pkg/redis"
 	"github.com/andev0x/order-service/internal/api"
 	"github.com/andev0x/order-service/internal/infrastructure/cache"
@@ -27,6 +28,9 @@ func main() {
 
 	// Load configuration
 	cfg := loadConfig()
+	if cfg.JWTSecret == "" {
+		log.Fatal("JWT_SECRET is required")
+	}
 
 	// Initialize database
 	log.Println("Connecting to database...")
@@ -106,15 +110,18 @@ func main() {
 
 	// Setup router
 	router := mux.NewRouter()
+	jwtMiddleware := httputil.JWTMiddleware(cfg.JWTSecret)
+	protectedRouter := router.NewRoute().Subrouter()
+	protectedRouter.Use(jwtMiddleware)
 
 	// Health and metrics endpoints
 	router.HandleFunc("/health", orderHandler.HealthCheck).Methods("GET")
 	router.Handle("/metrics", promhttp.Handler()).Methods("GET")
 
 	// Order endpoints
-	router.HandleFunc("/orders", orderHandler.CreateOrder).Methods("POST")
-	router.HandleFunc("/orders/{id}", orderHandler.GetOrder).Methods("GET")
-	router.HandleFunc("/orders", orderHandler.ListOrders).Methods("GET")
+	protectedRouter.HandleFunc("/orders", orderHandler.CreateOrder).Methods("POST")
+	protectedRouter.HandleFunc("/orders/{id}", orderHandler.GetOrder).Methods("GET")
+	protectedRouter.HandleFunc("/orders", orderHandler.ListOrders).Methods("GET")
 
 	// Setup server
 	srv := &http.Server{
@@ -160,6 +167,7 @@ type Config struct {
 	RedisHost   string
 	RedisPort   string
 	RabbitMQURL string
+	JWTSecret   string
 	ServicePort string
 }
 
@@ -174,6 +182,7 @@ func loadConfig() Config {
 		RedisHost:   config.GetEnv("REDIS_HOST", "localhost"),
 		RedisPort:   config.GetEnv("REDIS_PORT", "6379"),
 		RabbitMQURL: config.GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
+		JWTSecret:   config.GetEnv("JWT_SECRET", ""),
 		ServicePort: config.GetEnv("SERVICE_PORT", "8080"),
 	}
 }
