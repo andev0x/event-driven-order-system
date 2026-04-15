@@ -1,9 +1,10 @@
 module github.com/andev0x/event-driven-order-system/pkg
 
-go 1.21
+go 1.21.0
 
 require (
 	github.com/go-sql-driver/mysql v1.9.3
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/rabbitmq/amqp091-go v1.10.0
 	github.com/redis/go-redis/v9 v9.18.0
 )

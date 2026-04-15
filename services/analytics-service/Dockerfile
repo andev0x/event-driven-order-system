@@ -17,7 +17,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/bin/analytic
 # --- STAGE 2: Runtime Stage ---
 FROM alpine:latest
 
-RUN apk --no-cache add ca-certificates mysql-client
+RUN apk --no-cache add ca-certificates mysql-client mariadb-connector-c
 
 WORKDIR /root/
 

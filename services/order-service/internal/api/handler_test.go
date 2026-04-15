@@ -42,6 +42,50 @@ func TestHandler_CreateOrder_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestHandler_CreateOrder_UnknownField(t *testing.T) {
+	svc := order.NewService(
+		&mockRepo{},
+		&mockCache{},
+		&mockPublisher{},
+	)
+	handler := NewHandler(svc)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/orders",
+		bytes.NewBufferString(`{"customer_id":"cust-1","product_id":"prod-1","quantity":1,"total_amount":10,"unknown":"value"}`),
+	)
+	w := httptest.NewRecorder()
+
+	handler.CreateOrder(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("CreateOrder() status = %v, want %v", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandler_CreateOrder_ValidationError(t *testing.T) {
+	svc := order.NewService(
+		&mockRepo{},
+		&mockCache{},
+		&mockPublisher{},
+	)
+	handler := NewHandler(svc)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/orders",
+		bytes.NewBufferString(`{"customer_id":"","product_id":"prod-1","quantity":1,"total_amount":10}`),
+	)
+	w := httptest.NewRecorder()
+
+	handler.CreateOrder(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("CreateOrder() status = %v, want %v", w.Code, http.StatusBadRequest)
+	}
+}
+
 func TestHandler_CreateOrder_Success(t *testing.T) {
 	repo := &mockRepo{
 		createFunc: func(_ context.Context, _ *order.Order) error {
@@ -150,6 +194,34 @@ func TestHandler_HealthCheck_Degraded(t *testing.T) {
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("HealthCheck() status = %v, want %v", w.Code, http.StatusServiceUnavailable)
+	}
+}
+
+func TestHandler_ListOrders_InvalidLimit(t *testing.T) {
+	svc := order.NewService(&mockRepo{}, &mockCache{}, &mockPublisher{})
+	handler := NewHandler(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/orders?limit=abc", nil)
+	w := httptest.NewRecorder()
+
+	handler.ListOrders(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("ListOrders() status = %v, want %v", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandler_ListOrders_NegativeOffset(t *testing.T) {
+	svc := order.NewService(&mockRepo{}, &mockCache{}, &mockPublisher{})
+	handler := NewHandler(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/orders?offset=-1", nil)
+	w := httptest.NewRecorder()
+
+	handler.ListOrders(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("ListOrders() status = %v, want %v", w.Code, http.StatusBadRequest)
 	}
 }
 
