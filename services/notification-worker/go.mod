@@ -1,6 +1,6 @@
 module github.com/andev0x/notification-worker
 
-go 1.21
+go 1.21.0
 
 require (
 	github.com/andev0x/event-driven-order-system/pkg v0.0.0

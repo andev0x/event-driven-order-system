@@ -150,6 +150,8 @@ docker compose ps
 |---------|-----|-------------|
 | Order Service | http://localhost:8080 | - |
 | Analytics Service | http://localhost:8081 | - |
+| Internal Auth Token (Order) | http://localhost:8080/internal/auth/token | `X-Internal-Auth-Key` header |
+| Internal Auth Token (Analytics) | http://localhost:8081/internal/auth/token | `X-Internal-Auth-Key` header |
 | RabbitMQ Management | http://localhost:15672 | guest / guest |
 | MySQL (Order DB) | localhost:3306 | orderuser / orderpass |
 | MySQL (Analytics DB) | localhost:3307 | analyticsuser / analyticspass |
@@ -160,6 +162,10 @@ docker compose ps
 ```bash
 # Create a test order
 make order
+
+# Print raw JWT tokens (for scripting/manual requests)
+make token-order
+make token-analytics
 
 # Retrieve analytics summary
 make analytics
@@ -187,6 +193,7 @@ docker compose down -v
 ```http
 POST /orders
 Content-Type: application/json
+Authorization: Bearer <token>
 ```
 
 **Request Body:**
@@ -215,7 +222,10 @@ Content-Type: application/json
 
 **cURL Example:**
 ```bash
+TOKEN=$(make -s token-order)
+
 curl -X POST http://localhost:8080/orders \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"customer_id":"customer-123","product_id":"product-456","quantity":2,"total_amount":99.99}'
 ```
@@ -224,6 +234,7 @@ curl -X POST http://localhost:8080/orders \
 
 ```http
 GET /orders/{order_id}
+Authorization: Bearer <token>
 ```
 
 **Response (200 OK):**
@@ -246,6 +257,40 @@ GET /orders/{order_id}
 
 ```http
 GET /analytics/summary
+Authorization: Bearer <token>
+```
+
+#### Issue Internal Token
+
+```http
+POST /internal/auth/token
+X-Internal-Auth-Key: <internal-auth-key>
+Content-Type: application/json
+```
+
+**Request Body (optional):**
+```json
+{
+  "subject": "internal-cli",
+  "ttl_seconds": 3600
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "access_token": "jwt-token",
+  "token_type": "Bearer",
+  "expires_in": 3600
+}
+```
+
+**cURL Example:**
+```bash
+curl -X POST http://localhost:8080/internal/auth/token \
+  -H "X-Internal-Auth-Key: ${INTERNAL_AUTH_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"subject":"internal-cli","ttl_seconds":3600}'
 ```
 
 **Response (200 OK):**
@@ -332,6 +377,8 @@ make down          # Stop all services
 make logs          # Stream service logs
 make restart       # Restart all services
 make clean         # Remove containers and volumes
+make token-order   # Print Order Service JWT token
+make token-analytics # Print Analytics Service JWT token
 ```
 
 ### Environment Variables
@@ -346,6 +393,10 @@ make clean         # Remove containers and volumes
 | `REDIS_HOST` | localhost | Redis host |
 | `REDIS_PORT` | 6379 | Redis port |
 | `RABBITMQ_URL` | - | RabbitMQ connection URL |
+| `JWT_SECRET` | - | Shared HMAC secret for API token validation |
+| `INTERNAL_AUTH_KEY` | - | Key required by `/internal/auth/token` endpoint |
+| `INTERNAL_AUTH_ISSUER` | order-service / analytics-service | Issuer claim for generated tokens |
+| `INTERNAL_AUTH_TOKEN_TTL` | 1h | Default token lifetime |
 | `SERVICE_PORT` | - | HTTP server port |
 
 ### Code Standards
@@ -510,6 +561,7 @@ FLUSHALL
   }
 }
 ```
+
 
 ### OrderProcessed
 

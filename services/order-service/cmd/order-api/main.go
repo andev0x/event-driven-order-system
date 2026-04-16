@@ -31,6 +31,9 @@ func main() {
 	if cfg.JWTSecret == "" {
 		log.Fatal("JWT_SECRET is required")
 	}
+	if cfg.InternalAuthKey == "" {
+		log.Fatal("INTERNAL_AUTH_KEY is required")
+	}
 
 	// Initialize database
 	log.Println("Connecting to database...")
@@ -93,6 +96,12 @@ func main() {
 
 	// Create API handler
 	orderHandler := api.NewHandler(orderService)
+	authHandler := httputil.NewInternalAuthHandler(
+		cfg.JWTSecret,
+		cfg.InternalAuthKey,
+		cfg.InternalAuthIssuer,
+		cfg.InternalAuthTokenTTL,
+	)
 
 	// Setup health checker
 	healthChecker := &api.HealthChecker{
@@ -117,6 +126,7 @@ func main() {
 	// Health and metrics endpoints
 	router.HandleFunc("/health", orderHandler.HealthCheck).Methods("GET")
 	router.Handle("/metrics", promhttp.Handler()).Methods("GET")
+	router.HandleFunc("/internal/auth/token", authHandler.IssueToken).Methods("POST")
 
 	// Order endpoints
 	protectedRouter.HandleFunc("/orders", orderHandler.CreateOrder).Methods("POST")
@@ -159,30 +169,36 @@ func main() {
 
 // Config holds application configuration.
 type Config struct {
-	DBHost      string
-	DBPort      string
-	DBUser      string
-	DBPassword  string
-	DBName      string
-	RedisHost   string
-	RedisPort   string
-	RabbitMQURL string
-	JWTSecret   string
-	ServicePort string
+	DBHost               string
+	DBPort               string
+	DBUser               string
+	DBPassword           string
+	DBName               string
+	RedisHost            string
+	RedisPort            string
+	RabbitMQURL          string
+	JWTSecret            string
+	InternalAuthKey      string
+	InternalAuthIssuer   string
+	InternalAuthTokenTTL time.Duration
+	ServicePort          string
 }
 
 // loadConfig loads configuration from environment variables.
 func loadConfig() Config {
 	return Config{
-		DBHost:      config.GetEnv("DB_HOST", "localhost"),
-		DBPort:      config.GetEnv("DB_PORT", "3306"),
-		DBUser:      config.GetEnv("DB_USER", "orderuser"),
-		DBPassword:  config.GetEnv("DB_PASSWORD", "orderpass"),
-		DBName:      config.GetEnv("DB_NAME", "order_db"),
-		RedisHost:   config.GetEnv("REDIS_HOST", "localhost"),
-		RedisPort:   config.GetEnv("REDIS_PORT", "6379"),
-		RabbitMQURL: config.GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
-		JWTSecret:   config.GetEnv("JWT_SECRET", ""),
-		ServicePort: config.GetEnv("SERVICE_PORT", "8080"),
+		DBHost:               config.GetEnv("DB_HOST", "localhost"),
+		DBPort:               config.GetEnv("DB_PORT", "3306"),
+		DBUser:               config.GetEnv("DB_USER", "orderuser"),
+		DBPassword:           config.GetEnv("DB_PASSWORD", "orderpass"),
+		DBName:               config.GetEnv("DB_NAME", "order_db"),
+		RedisHost:            config.GetEnv("REDIS_HOST", "localhost"),
+		RedisPort:            config.GetEnv("REDIS_PORT", "6379"),
+		RabbitMQURL:          config.GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
+		JWTSecret:            config.GetEnv("JWT_SECRET", ""),
+		InternalAuthKey:      config.GetEnv("INTERNAL_AUTH_KEY", ""),
+		InternalAuthIssuer:   config.GetEnv("INTERNAL_AUTH_ISSUER", "order-service"),
+		InternalAuthTokenTTL: config.GetEnvDuration("INTERNAL_AUTH_TOKEN_TTL", time.Hour),
+		ServicePort:          config.GetEnv("SERVICE_PORT", "8080"),
 	}
 }

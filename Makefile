@@ -5,10 +5,15 @@ SHELL := /bin/bash
 .ONESHELL:
 .SHELLFLAGS := -eu -o pipefail -c
 
-.PHONY: help tidy test build build-go up down logs clean restart order analytics notification
+.PHONY: help tidy test build build-go up down logs clean restart token-order token-analytics order analytics notification
 
 SERVICES := order-service analytics-service notification-worker
 SERVICES_DIR := services
+ORDER_SERVICE_URL ?= http://localhost:8080
+ANALYTICS_SERVICE_URL ?= http://localhost:8081
+INTERNAL_AUTH_KEY ?= dev-internal-key-change-me
+AUTH_SUBJECT ?= internal-cli
+AUTH_TTL_SECONDS ?= 3600
 
 help:
 	@echo "Available targets:"
@@ -21,6 +26,8 @@ help:
 	@echo "  make logs           - Show logs from all services"
 	@echo "  make clean          - Clean up containers and volumes"
 	@echo "  make restart        - Restart all services"
+	@echo "  make token-order    - Print JWT token from Order Service"
+	@echo "  make token-analytics - Print JWT token from Analytics Service"
 	@echo "  make order          - Create a test order"
 	@echo "  make analytics      - Get analytics summary"
 	@echo "  make notification   - Check notification worker logs"
@@ -70,16 +77,46 @@ clean:
 
 restart: down up
 
+token-order:
+	@RESPONSE=$$(curl -sS -X POST $(ORDER_SERVICE_URL)/internal/auth/token \
+		-H "Content-Type: application/json" \
+		-H "X-Internal-Auth-Key: $(INTERNAL_AUTH_KEY)" \
+		-d '{"subject":"$(AUTH_SUBJECT)","ttl_seconds":$(AUTH_TTL_SECONDS)}'); \
+	TOKEN=$$(printf '%s' "$$RESPONSE" | jq -r '.access_token // empty'); \
+	if [ -z "$$TOKEN" ]; then \
+		echo "failed to fetch order token"; \
+		printf '%s\n' "$$RESPONSE" | jq .; \
+		exit 1; \
+	fi; \
+	printf '%s\n' "$$TOKEN"
+
+token-analytics:
+	@RESPONSE=$$(curl -sS -X POST $(ANALYTICS_SERVICE_URL)/internal/auth/token \
+		-H "Content-Type: application/json" \
+		-H "X-Internal-Auth-Key: $(INTERNAL_AUTH_KEY)" \
+		-d '{"subject":"$(AUTH_SUBJECT)","ttl_seconds":$(AUTH_TTL_SECONDS)}'); \
+	TOKEN=$$(printf '%s' "$$RESPONSE" | jq -r '.access_token // empty'); \
+	if [ -z "$$TOKEN" ]; then \
+		echo "failed to fetch analytics token"; \
+		printf '%s\n' "$$RESPONSE" | jq .; \
+		exit 1; \
+	fi; \
+	printf '%s\n' "$$TOKEN"
+
 order:
 	@echo "Creating test order..."
-	curl -s -X POST http://localhost:8080/orders \
+	@TOKEN=$$($(MAKE) -s token-order); \
+	curl -sS -X POST $(ORDER_SERVICE_URL)/orders \
 		-H "Content-Type: application/json" \
+		-H "Authorization: Bearer $$TOKEN" \
 		-d '{"customer_id":"customer-123","product_id":"product-456","quantity":2,"total_amount":99.99}' | jq .
 	@echo ""
 
 analytics:
 	@echo "Fetching analytics summary..."
-	curl -s http://localhost:8081/analytics/summary | jq .
+	@TOKEN=$$($(MAKE) -s token-analytics); \
+	curl -sS $(ANALYTICS_SERVICE_URL)/analytics/summary \
+		-H "Authorization: Bearer $$TOKEN" | jq .
 	@echo ""
 
 notification:

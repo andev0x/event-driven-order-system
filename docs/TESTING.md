@@ -42,7 +42,10 @@ This script will:
 
 ```bash
 # Create an order
+TOKEN=$(make -s token-order)
+
 curl -X POST http://localhost:8080/orders \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "customer_id": "customer-123",
@@ -73,17 +76,19 @@ Expected response:
 
 ```bash
 # Get order by ID
-curl http://localhost:8080/orders/{order-id}
+TOKEN=$(make -s token-order)
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/orders/{order-id}
 
 # List all orders
-curl http://localhost:8080/orders
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/orders
 ```
 
 ### Test Analytics
 
 ```bash
 # Get analytics summary
-curl http://localhost:8081/analytics/summary
+TOKEN=$(make -s token-analytics)
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8081/analytics/summary
 
 # Or use Make
 make analytics
@@ -125,6 +130,7 @@ curl http://localhost:8081/metrics
 
 ```bash
 ORDER_ID=$(curl -s -X POST http://localhost:8080/orders \
+  -H "Authorization: Bearer $(make -s token-order)" \
   -H "Content-Type: application/json" \
   -d '{
     "customer_id": "test-customer",
@@ -166,7 +172,7 @@ You should see logs like:
 ### 4. Verify Analytics Update
 
 ```bash
-curl http://localhost:8081/analytics/summary | jq '.'
+curl -H "Authorization: Bearer $(make -s token-analytics)" http://localhost:8081/analytics/summary | jq '.'
 ```
 
 The `total_orders` and `total_revenue` should reflect the new order.
