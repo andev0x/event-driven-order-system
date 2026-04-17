@@ -3,6 +3,10 @@
 # Test script for Event-Driven Order System
 set -e
 
+INTERNAL_AUTH_KEY="${INTERNAL_AUTH_KEY:-dev-internal-key-change-me}"
+AUTH_SUBJECT="${AUTH_SUBJECT:-test-runner}"
+AUTH_TTL_SECONDS="${AUTH_TTL_SECONDS:-3600}"
+
 echo "=========================================="
 echo "Event-Driven Order System - Test Script"
 echo "=========================================="
@@ -27,6 +31,27 @@ print_error() {
     echo -e "${RED}✗ $1${NC}"
 }
 
+fetch_token() {
+    local service_name="$1"
+    local service_url="$2"
+
+    local response
+    response=$(curl -sS -X POST "$service_url/internal/auth/token" \
+        -H "Content-Type: application/json" \
+        -H "X-Internal-Auth-Key: $INTERNAL_AUTH_KEY" \
+        -d "{\"subject\":\"$AUTH_SUBJECT\",\"ttl_seconds\":$AUTH_TTL_SECONDS}")
+
+    local token
+    token=$(echo "$response" | jq -r '.access_token // empty')
+    if [ -z "$token" ]; then
+        print_error "Failed to retrieve token for $service_name"
+        echo "$response" | jq .
+        exit 1
+    fi
+
+    echo "$token"
+}
+
 # Check if services are running
 print_info "Checking if services are running..."
 if ! docker-compose ps | grep -q "Up"; then
@@ -38,6 +63,12 @@ print_success "Services are running"
 # Wait for services to be ready
 print_info "Waiting for services to be fully ready..."
 sleep 5
+
+# Fetch tokens for authenticated endpoints
+print_info "Fetching internal access tokens..."
+ORDER_TOKEN=$(fetch_token "Order Service" "http://localhost:8080")
+ANALYTICS_TOKEN=$(fetch_token "Analytics Service" "http://localhost:8081")
+print_success "Access tokens retrieved"
 
 # Test 1: Health check - Order Service
 print_info "Testing Order Service health..."
@@ -63,6 +94,7 @@ fi
 print_info "Creating test order..."
 ORDER_RESPONSE=$(curl -s -X POST http://localhost:8080/orders \
     -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $ORDER_TOKEN" \
     -d '{
         "customer_id": "customer-001",
         "product_id": "product-123",
@@ -82,7 +114,7 @@ fi
 
 # Test 4: Retrieve the created order
 print_info "Retrieving order by ID..."
-GET_ORDER=$(curl -s http://localhost:8080/orders/$ORDER_ID)
+GET_ORDER=$(curl -s -H "Authorization: Bearer $ORDER_TOKEN" http://localhost:8080/orders/$ORDER_ID)
 if echo "$GET_ORDER" | grep -q "$ORDER_ID"; then
     print_success "Order retrieved successfully"
 else
@@ -95,6 +127,7 @@ print_info "Creating additional orders for analytics..."
 for i in {1..3}; do
     curl -s -X POST http://localhost:8080/orders \
         -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $ORDER_TOKEN" \
         -d "{
             \"customer_id\": \"customer-00$i\",
             \"product_id\": \"product-$i\",
@@ -110,7 +143,7 @@ sleep 3
 
 # Test 6: Check analytics summary
 print_info "Checking analytics summary..."
-ANALYTICS_SUMMARY=$(curl -s http://localhost:8081/analytics/summary)
+ANALYTICS_SUMMARY=$(curl -s -H "Authorization: Bearer $ANALYTICS_TOKEN" http://localhost:8081/analytics/summary)
 TOTAL_ORDERS=$(echo "$ANALYTICS_SUMMARY" | grep -o '"total_orders":[0-9]*' | cut -d':' -f2)
 
 if [ "$TOTAL_ORDERS" -ge 4 ]; then

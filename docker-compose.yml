@@ -83,6 +83,7 @@ services:
       REDIS_PORT: 6379
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      INTERNAL_AUTH_KEY: ${INTERNAL_AUTH_KEY:-dev-internal-key-change-me}
       SERVICE_PORT: 8080
     ports:
       - "8080:8080"
@@ -111,6 +112,7 @@ services:
       REDIS_PORT: 6379
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      INTERNAL_AUTH_KEY: ${INTERNAL_AUTH_KEY:-dev-internal-key-change-me}
       SERVICE_PORT: 8081
     ports:
       - "8081:8081"
