@@ -1,40 +1,55 @@
-# Go
+# --- Binaries & Build Artifacts ---
+bin/
+dist/
+build/
+out/
 *.exe
+*.exe~
 *.dll
 *.so
 *.dylib
 *.test
-*.out
+/services/**/main
+# Specifically ignore your compiled service binaries
+order-service
+analytics-service
 
-# Build output
-**/bin/
-/bin/
-/build/
-/dist/
-/services/*/main
+# --- Go Specific ---
+# Ignore vendor if using Go Modules
+vendor/
+# Documentation/Profile files
+*.prof
+coverage.out
+coverage.html
 
-# Vendor (if not committing)
- /vendor/
-
-# Env / Secrets
+# --- Environment & Secrets (CRITICAL) ---
 .env
 .env.*
+# Allow tracking of template files
+!.env.example
 
-# Logs
+# --- Logs & Databases ---
 *.log
+/logs/
+# Local persistent data for Docker volumes
+data/
+mysql_data/
+rabbitmq_data/
 
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE / Editor
+# --- IDEs & Editors ---
 .idea/
 .vscode/
 *.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
 
-# Docker
+# --- OS Specific ---
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+
+# --- Docker ---
 docker-compose.override.yml
-
-# Coverage / Test
-coverage.out
-coverage.html
