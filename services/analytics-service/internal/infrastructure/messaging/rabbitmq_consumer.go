@@ -15,6 +15,10 @@ const (
 	exchangeType = "topic"
 	queueName    = "analytics.orders"
 	routingKey   = "order.created"
+
+	deadLetterExchangeName = "orders.dlx"
+	deadLetterRoutingKey   = "analytics.orders.failed"
+	deadLetterQueueName    = "analytics.orders.dlq"
 )
 
 // RabbitMQConsumer implements event consumption from RabbitMQ.
@@ -53,6 +57,48 @@ func NewRabbitMQConsumer(url string) (*RabbitMQConsumer, error) {
 		return nil, fmt.Errorf("failed to declare exchange: %w", err)
 	}
 
+	// Declare dead-letter exchange
+	err = channel.ExchangeDeclare(
+		deadLetterExchangeName,
+		exchangeType,
+		true,  // durable
+		false, // auto-deleted
+		false, // internal
+		false, // no-wait
+		nil,   // arguments
+	)
+	if err != nil {
+		closeResources(channel, conn)
+		return nil, fmt.Errorf("failed to declare dead-letter exchange: %w", err)
+	}
+
+	// Declare dead-letter queue
+	dlq, err := channel.QueueDeclare(
+		deadLetterQueueName,
+		true,  // durable
+		false, // delete when unused
+		false, // exclusive
+		false, // no-wait
+		nil,   // arguments
+	)
+	if err != nil {
+		closeResources(channel, conn)
+		return nil, fmt.Errorf("failed to declare dead-letter queue: %w", err)
+	}
+
+	// Bind dead-letter queue to dead-letter exchange
+	err = channel.QueueBind(
+		dlq.Name,
+		deadLetterRoutingKey,
+		deadLetterExchangeName,
+		false,
+		nil,
+	)
+	if err != nil {
+		closeResources(channel, conn)
+		return nil, fmt.Errorf("failed to bind dead-letter queue: %w", err)
+	}
+
 	// Declare queue
 	queue, err := channel.QueueDeclare(
 		queueName,
@@ -60,7 +106,10 @@ func NewRabbitMQConsumer(url string) (*RabbitMQConsumer, error) {
 		false, // delete when unused
 		false, // exclusive
 		false, // no-wait
-		nil,   // arguments
+		amqp.Table{
+			"x-dead-letter-exchange":    deadLetterExchangeName,
+			"x-dead-letter-routing-key": deadLetterRoutingKey,
+		},
 	)
 	if err != nil {
 		closeResources(channel, conn)
@@ -80,7 +129,8 @@ func NewRabbitMQConsumer(url string) (*RabbitMQConsumer, error) {
 		return nil, fmt.Errorf("failed to bind queue: %w", err)
 	}
 
-	log.Printf("RabbitMQ consumer connected, queue '%s' bound to exchange '%s'", queueName, exchangeName)
+	log.Printf("RabbitMQ consumer connected, queue '%s' bound to exchange '%s' with DLQ '%s'",
+		queueName, exchangeName, deadLetterQueueName)
 
 	return &RabbitMQConsumer{
 		conn:    conn,
@@ -140,9 +190,10 @@ func (c *RabbitMQConsumer) StartConsuming(ctx context.Context, handler EventHand
 
 				if err := handler(&event); err != nil {
 					log.Printf("Error processing event: %v", err)
-					if nackErr := msg.Nack(false, true); nackErr != nil {
+					if nackErr := msg.Nack(false, false); nackErr != nil {
 						log.Printf("Error nacking message: %v", nackErr)
 					}
+					log.Printf("Message moved to DLQ '%s'", deadLetterQueueName)
 					continue
 				}
 

@@ -523,6 +523,9 @@ docker compose down -v && docker compose up --build
 # Check RabbitMQ queue status
 curl -u guest:guest http://localhost:15672/api/queues
 
+# Inspect DLQ message counts
+curl -u guest:guest http://localhost:15672/api/queues | jq '.[] | select(.name | endswith(".dlq")) | {name, messages}'
+
 # Verify consumer is running
 docker compose logs analytics-service | grep "consumer"
 ```
@@ -581,7 +584,7 @@ FLUSHALL
 ## Roadmap
 
 - [ ] gRPC for inter-service communication
-- [ ] Dead-letter queue implementation
+- [x] Dead-letter queue (DLQ) for failed messages
 - [ ] OpenTelemetry distributed tracing
 - [ ] Circuit breaker pattern
 - [ ] Rate limiting
