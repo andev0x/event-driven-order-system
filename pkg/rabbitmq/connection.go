@@ -2,7 +2,7 @@ package rabbitmq
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -63,7 +63,11 @@ func Connect(cfg Config) (*Connection, error) {
 		if err == nil {
 			break
 		}
-		log.Printf("Failed to connect to RabbitMQ (attempt %d/%d): %v", i+1, maxRetries, err)
+		slog.Warn("Failed to connect to RabbitMQ",
+			"attempt", i+1,
+			"max_retries", maxRetries,
+			"error", err,
+		)
 		time.Sleep(retryDelay)
 	}
 
@@ -74,7 +78,7 @@ func Connect(cfg Config) (*Connection, error) {
 	channel, err := conn.Channel()
 	if err != nil {
 		if closeErr := conn.Close(); closeErr != nil {
-			log.Printf("Error closing connection: %v", closeErr)
+			slog.Error("Failed to close RabbitMQ connection", "error", closeErr)
 		}
 		return nil, fmt.Errorf("failed to open channel: %w", err)
 	}
@@ -100,15 +104,15 @@ func Connect(cfg Config) (*Connection, error) {
 	)
 	if err != nil {
 		if closeErr := channel.Close(); closeErr != nil {
-			log.Printf("Error closing channel: %v", closeErr)
+			slog.Error("Failed to close RabbitMQ channel", "error", closeErr)
 		}
 		if closeErr := conn.Close(); closeErr != nil {
-			log.Printf("Error closing connection: %v", closeErr)
+			slog.Error("Failed to close RabbitMQ connection", "error", closeErr)
 		}
 		return nil, fmt.Errorf("failed to declare exchange: %w", err)
 	}
 
-	log.Printf("RabbitMQ connected, exchange '%s' declared", exchangeName)
+	slog.Info("RabbitMQ connected", "exchange", exchangeName)
 
 	return &Connection{
 		conn:    conn,
@@ -181,8 +185,11 @@ func (c *Connection) DeclareQueue(queueName, routingKey string) error {
 		return fmt.Errorf("failed to bind queue: %w", err)
 	}
 
-	log.Printf("Queue '%s' declared and bound to exchange '%s' with routing key '%s'",
-		queueName, exchangeName, routingKey)
+	slog.Info("RabbitMQ queue declared and bound",
+		"queue", queueName,
+		"exchange", exchangeName,
+		"routing_key", routingKey,
+	)
 
 	return nil
 }

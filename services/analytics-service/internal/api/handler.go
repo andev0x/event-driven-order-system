@@ -1,7 +1,7 @@
 package api
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/andev0x/analytics-service/internal/analytics"
@@ -38,7 +38,7 @@ func (h *Handler) SetHealthChecker(hc *HealthChecker) {
 func (h *Handler) GetSummary(w http.ResponseWriter, r *http.Request) {
 	summary, err := h.service.GetSummary(r.Context())
 	if err != nil {
-		log.Printf("Error getting summary: %v", err)
+		slog.Error("Failed to get analytics summary", "error", err)
 		httputil.RespondError(w, http.StatusInternalServerError, "Failed to get analytics summary")
 		return
 	}

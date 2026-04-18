@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -63,7 +63,7 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		log.Printf("Error creating order: %v", err)
+		slog.Error("Failed to create order", "error", err)
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to create order")
 		return
 	}
@@ -83,7 +83,7 @@ func (h *Handler) GetOrder(w http.ResponseWriter, r *http.Request) {
 
 	o, err := h.service.GetByID(r.Context(), id)
 	if err != nil {
-		log.Printf("Error getting order: %v", err)
+		slog.Error("Failed to get order", "order_id", id, "error", err)
 		httputil.RespondError(w, http.StatusNotFound, "Order not found")
 		return
 	}
@@ -131,7 +131,7 @@ func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 
 	orders, err := h.service.List(r.Context(), limit, offset)
 	if err != nil {
-		log.Printf("Error listing orders: %v", err)
+		slog.Error("Failed to list orders", "limit", limit, "offset", offset, "error", err)
 		httputil.RespondError(w, http.StatusInternalServerError, "Failed to list orders")
 		return
 	}

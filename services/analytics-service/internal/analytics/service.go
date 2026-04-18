@@ -3,7 +3,7 @@ package analytics
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/andev0x/event-driven-order-system/pkg/events"
 )
@@ -40,10 +40,13 @@ func (s *Service) ProcessOrderEvent(ctx context.Context, event *events.OrderCrea
 
 	// Invalidate cache to force fresh calculation on next request
 	if err := s.cache.InvalidateSummary(ctx); err != nil {
-		log.Printf("Warning: failed to invalidate cache: %v", err)
+		slog.Warn("Failed to invalidate analytics summary cache", "error", err)
 	}
 
-	log.Printf("Successfully processed order event: OrderID=%s, Amount=%.2f", event.OrderID, event.TotalAmount)
+	slog.Info("Successfully processed order event",
+		"order_id", event.OrderID,
+		"total_amount", event.TotalAmount,
+	)
 	return nil
 }
 
@@ -52,11 +55,11 @@ func (s *Service) GetSummary(ctx context.Context) (*Summary, error) {
 	// Try to get from cache first
 	summary, err := s.cache.GetSummary(ctx)
 	if err == nil {
-		log.Println("Cache hit for analytics summary")
+		slog.Info("Analytics summary cache hit")
 		return summary, nil
 	}
 
-	log.Println("Cache miss for analytics summary, fetching from database")
+	slog.Info("Analytics summary cache miss, fetching from database")
 
 	// Cache miss, get from database
 	summary, err = s.repo.GetSummary(ctx)
@@ -66,7 +69,7 @@ func (s *Service) GetSummary(ctx context.Context) (*Summary, error) {
 
 	// Update cache
 	if err := s.cache.SetSummary(ctx, summary); err != nil {
-		log.Printf("Warning: failed to cache summary: %v", err)
+		slog.Warn("Failed to cache analytics summary", "error", err)
 	}
 
 	return summary, nil

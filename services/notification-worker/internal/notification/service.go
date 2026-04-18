@@ -3,7 +3,7 @@ package notification
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/andev0x/event-driven-order-system/pkg/events"
@@ -41,7 +41,10 @@ func (s *Service) ProcessOrderCreated(ctx context.Context, event *events.OrderCr
 		return fmt.Errorf("failed to send notification: %w", err)
 	}
 
-	log.Printf("Notification sent for order: %s to customer: %s", event.OrderID, event.CustomerID)
+	slog.Info("Notification sent",
+		"order_id", event.OrderID,
+		"customer_id", event.CustomerID,
+	)
 	return nil
 }
 
@@ -69,6 +72,9 @@ func (s *ConsoleSender) Send(_ context.Context, recipient, subject, _ string) er
 	// Simulate notification delay
 	time.Sleep(s.simulatedDelay)
 
-	log.Printf("[NOTIFICATION] To: %s | Subject: %s", recipient, subject)
+	slog.Info("Console notification dispatched",
+		"recipient", recipient,
+		"subject", subject,
+	)
 	return nil
 }

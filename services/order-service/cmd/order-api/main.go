@@ -3,7 +3,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -24,19 +24,24 @@ import (
 )
 
 func main() {
-	log.Println("Starting Order Service...")
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "order-service")
+	slog.SetDefault(logger)
+
+	slog.Info("Starting order service")
 
 	// Load configuration
 	cfg := loadConfig()
 	if cfg.JWTSecret == "" {
-		log.Fatal("JWT_SECRET is required")
+		slog.Error("Missing required configuration", "key", "JWT_SECRET")
+		os.Exit(1)
 	}
 	if cfg.InternalAuthKey == "" {
-		log.Fatal("INTERNAL_AUTH_KEY is required")
+		slog.Error("Missing required configuration", "key", "INTERNAL_AUTH_KEY")
+		os.Exit(1)
 	}
 
 	// Initialize database
-	log.Println("Connecting to database...")
+	slog.Info("Connecting to database")
 	dbCfg := database.Config{
 		Host:     cfg.DBHost,
 		Port:     cfg.DBPort,
@@ -46,46 +51,47 @@ func main() {
 	}
 	db, err := database.Connect(dbCfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		slog.Error("Failed to initialize database", "error", err)
+		os.Exit(1)
 	}
 	defer func() {
 		if err := db.Close(); err != nil {
-			log.Printf("Error closing database connection: %v", err)
+			slog.Error("Failed to close database connection", "error", err)
 		}
 	}()
-	log.Println("Database connected successfully")
+	slog.Info("Database connected successfully")
 
 	// Initialize Redis
-	log.Println("Connecting to Redis...")
+	slog.Info("Connecting to Redis")
 	redisCfg := pkgredis.Config{
 		Host: cfg.RedisHost,
 		Port: cfg.RedisPort,
 	}
 	redisClient, err := pkgredis.Connect(redisCfg)
 	if err != nil {
-		log.Printf("Failed to initialize Redis: %v", err)
+		slog.Error("Failed to initialize Redis", "error", err)
 		return
 	}
 	defer func() {
 		if err := redisClient.Close(); err != nil {
-			log.Printf("Error closing Redis connection: %v", err)
+			slog.Error("Failed to close Redis connection", "error", err)
 		}
 	}()
-	log.Println("Redis connected successfully")
+	slog.Info("Redis connected successfully")
 
 	// Initialize RabbitMQ publisher
-	log.Println("Connecting to RabbitMQ...")
+	slog.Info("Connecting to RabbitMQ")
 	publisher, err := messaging.NewRabbitMQPublisher(cfg.RabbitMQURL)
 	if err != nil {
-		log.Printf("Failed to initialize RabbitMQ publisher: %v", err)
+		slog.Error("Failed to initialize RabbitMQ publisher", "error", err)
 		return
 	}
 	defer func() {
 		if err := publisher.Close(); err != nil {
-			log.Printf("Error closing RabbitMQ publisher: %v", err)
+			slog.Error("Failed to close RabbitMQ publisher", "error", err)
 		}
 	}()
-	log.Println("RabbitMQ connected successfully")
+	slog.Info("RabbitMQ connected successfully")
 
 	// Create infrastructure implementations
 	orderRepo := persistence.NewMySQLRepository(db)
@@ -144,9 +150,10 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		log.Printf("Order Service listening on port %s", cfg.ServicePort)
+		slog.Info("Order service listening", "port", cfg.ServicePort)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start server: %v", err)
+			slog.Error("Failed to start HTTP server", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -155,16 +162,16 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("Shutting down server...")
+	slog.Info("Shutting down server")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Printf("Server forced to shutdown: %v", err)
+		slog.Error("Server forced to shutdown", "error", err)
 	}
 
-	log.Println("Server exited gracefully")
+	slog.Info("Server exited gracefully")
 }
 
 // Config holds application configuration.

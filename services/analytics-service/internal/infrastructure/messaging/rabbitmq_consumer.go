@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/andev0x/event-driven-order-system/pkg/events"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -37,7 +37,7 @@ func NewRabbitMQConsumer(url string) (*RabbitMQConsumer, error) {
 	channel, err := conn.Channel()
 	if err != nil {
 		if closeErr := conn.Close(); closeErr != nil {
-			log.Printf("Error closing connection: %v", closeErr)
+			slog.Error("Failed to close RabbitMQ connection", "error", closeErr)
 		}
 		return nil, fmt.Errorf("failed to open channel: %w", err)
 	}
@@ -129,8 +129,11 @@ func NewRabbitMQConsumer(url string) (*RabbitMQConsumer, error) {
 		return nil, fmt.Errorf("failed to bind queue: %w", err)
 	}
 
-	log.Printf("RabbitMQ consumer connected, queue '%s' bound to exchange '%s' with DLQ '%s'",
-		queueName, exchangeName, deadLetterQueueName)
+	slog.Info("RabbitMQ consumer connected",
+		"queue", queueName,
+		"exchange", exchangeName,
+		"dead_letter_queue", deadLetterQueueName,
+	)
 
 	return &RabbitMQConsumer{
 		conn:    conn,
@@ -162,45 +165,55 @@ func (c *RabbitMQConsumer) StartConsuming(ctx context.Context, handler EventHand
 		return fmt.Errorf("failed to register consumer: %w", err)
 	}
 
-	log.Println("Analytics service is now consuming order events...")
+	slog.Info("Analytics service started consuming order events", "queue", queueName)
 
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
-				log.Println("Stopping consumer...")
+				slog.Info("Stopping RabbitMQ consumer", "queue", queueName)
 				return
 			case msg, ok := <-msgs:
 				if !ok {
-					log.Println("Message channel closed")
+					slog.Warn("RabbitMQ message channel closed", "queue", queueName)
 					return
 				}
 
 				var event events.OrderCreated
 				if err := json.Unmarshal(msg.Body, &event); err != nil {
-					log.Printf("Error unmarshaling event: %v", err)
+					slog.Error("Failed to unmarshal order event", "queue", queueName, "error", err)
 					if nackErr := msg.Nack(false, false); nackErr != nil {
-						log.Printf("Error nacking message: %v", nackErr)
+						slog.Error("Failed to nack RabbitMQ message", "queue", queueName, "error", nackErr)
 					}
 					continue
 				}
 
-				log.Printf("Received OrderCreated event: OrderID=%s, CustomerID=%s, Amount=%.2f",
-					event.OrderID, event.CustomerID, event.TotalAmount)
+				slog.Info("Received OrderCreated event",
+					"order_id", event.OrderID,
+					"customer_id", event.CustomerID,
+					"total_amount", event.TotalAmount,
+				)
 
 				if err := handler(&event); err != nil {
-					log.Printf("Error processing event: %v", err)
+					slog.Error("Failed to process order event",
+						"order_id", event.OrderID,
+						"queue", queueName,
+						"error", err,
+					)
 					if nackErr := msg.Nack(false, false); nackErr != nil {
-						log.Printf("Error nacking message: %v", nackErr)
+						slog.Error("Failed to nack RabbitMQ message", "queue", queueName, "error", nackErr)
 					}
-					log.Printf("Message moved to DLQ '%s'", deadLetterQueueName)
+					slog.Warn("Message moved to dead-letter queue",
+						"dead_letter_queue", deadLetterQueueName,
+						"order_id", event.OrderID,
+					)
 					continue
 				}
 
 				if ackErr := msg.Ack(false); ackErr != nil {
-					log.Printf("Error acking message: %v", ackErr)
+					slog.Error("Failed to ack RabbitMQ message", "queue", queueName, "error", ackErr)
 				}
-				log.Printf("Successfully processed event for order: %s", event.OrderID)
+				slog.Info("Successfully processed order event", "order_id", event.OrderID)
 			}
 		}
 	}()
@@ -240,12 +253,12 @@ func (c *RabbitMQConsumer) HealthCheck() error {
 func closeResources(channel *amqp.Channel, conn *amqp.Connection) {
 	if channel != nil {
 		if err := channel.Close(); err != nil {
-			log.Printf("Error closing channel: %v", err)
+			slog.Error("Failed to close RabbitMQ channel", "error", err)
 		}
 	}
 	if conn != nil {
 		if err := conn.Close(); err != nil {
-			log.Printf("Error closing connection: %v", err)
+			slog.Error("Failed to close RabbitMQ connection", "error", err)
 		}
 	}
 }

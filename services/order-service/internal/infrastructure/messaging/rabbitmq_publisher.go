@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	pkgevents "github.com/andev0x/event-driven-order-system/pkg/events"
@@ -34,7 +34,7 @@ func NewRabbitMQPublisher(url string) (*RabbitMQPublisher, error) {
 	channel, err := conn.Channel()
 	if err != nil {
 		if closeErr := conn.Close(); closeErr != nil {
-			log.Printf("Error closing connection: %v", closeErr)
+			slog.Error("Failed to close RabbitMQ connection", "error", closeErr)
 		}
 		return nil, fmt.Errorf("failed to open channel: %w", err)
 	}
@@ -51,15 +51,15 @@ func NewRabbitMQPublisher(url string) (*RabbitMQPublisher, error) {
 	)
 	if err != nil {
 		if closeErr := channel.Close(); closeErr != nil {
-			log.Printf("Error closing channel: %v", closeErr)
+			slog.Error("Failed to close RabbitMQ channel", "error", closeErr)
 		}
 		if closeErr := conn.Close(); closeErr != nil {
-			log.Printf("Error closing connection: %v", closeErr)
+			slog.Error("Failed to close RabbitMQ connection", "error", closeErr)
 		}
 		return nil, fmt.Errorf("failed to declare exchange: %w", err)
 	}
 
-	log.Printf("RabbitMQ publisher connected and exchange '%s' declared", exchangeName)
+	slog.Info("RabbitMQ publisher connected", "exchange", exchangeName)
 
 	return &RabbitMQPublisher{
 		conn:    conn,
@@ -101,7 +101,7 @@ func (p *RabbitMQPublisher) PublishOrderCreated(ctx context.Context, o *order.Or
 		return fmt.Errorf("failed to publish event: %w", err)
 	}
 
-	log.Printf("Published OrderCreated event for order: %s", o.ID)
+	slog.Info("Published OrderCreated event", "order_id", o.ID)
 	return nil
 }
 

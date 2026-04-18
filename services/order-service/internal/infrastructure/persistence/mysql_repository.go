@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/andev0x/order-service/internal/order"
 )
@@ -89,7 +89,7 @@ func (r *MySQLRepository) List(ctx context.Context, limit, offset int) ([]*order
 	}
 	defer func() {
 		if err := rows.Close(); err != nil {
-			log.Printf("Error closing rows: %v", err)
+			slog.Error("Failed to close rows", "error", err)
 		}
 	}()
 

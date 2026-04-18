@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -112,31 +112,31 @@ func (c *Consumer) StartConsuming(ctx context.Context, handler MessageHandler) e
 		return fmt.Errorf("failed to register consumer: %w", err)
 	}
 
-	log.Printf("Consumer started for queue '%s'", c.queueName)
+	slog.Info("RabbitMQ consumer started", "queue", c.queueName)
 
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
-				log.Println("Stopping consumer...")
+				slog.Info("Stopping RabbitMQ consumer", "queue", c.queueName)
 				return
 			case msg, ok := <-msgs:
 				if !ok {
-					log.Println("Message channel closed")
+					slog.Warn("RabbitMQ message channel closed", "queue", c.queueName)
 					return
 				}
 
 				if err := handler(msg.Body); err != nil {
-					log.Printf("Error processing message: %v", err)
+					slog.Error("Failed to process RabbitMQ message", "queue", c.queueName, "error", err)
 					// Requeue on error
 					if nackErr := msg.Nack(false, true); nackErr != nil {
-						log.Printf("Error nacking message: %v", nackErr)
+						slog.Error("Failed to nack RabbitMQ message", "queue", c.queueName, "error", nackErr)
 					}
 					continue
 				}
 
 				if ackErr := msg.Ack(false); ackErr != nil {
-					log.Printf("Error acking message: %v", ackErr)
+					slog.Error("Failed to ack RabbitMQ message", "queue", c.queueName, "error", ackErr)
 				}
 			}
 		}

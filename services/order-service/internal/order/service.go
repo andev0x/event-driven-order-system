@@ -3,7 +3,7 @@ package order
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/google/uuid"
 )
@@ -41,17 +41,17 @@ func (s *Service) Create(ctx context.Context, req *CreateRequest) (*Order, error
 
 	// Cache the order (non-blocking)
 	if err := s.cache.Set(ctx, order); err != nil {
-		log.Printf("Warning: failed to cache order %s: %v", order.ID, err)
+		slog.Warn("Failed to cache order", "order_id", order.ID, "error", err)
 	}
 
 	// Publish event asynchronously
 	go func() {
 		if err := s.publisher.PublishOrderCreated(context.Background(), order); err != nil {
-			log.Printf("Error: failed to publish order created event for order %s: %v", order.ID, err)
+			slog.Error("Failed to publish order created event", "order_id", order.ID, "error", err)
 		}
 	}()
 
-	log.Printf("Order created successfully: %s", order.ID)
+	slog.Info("Order created successfully", "order_id", order.ID)
 	return order, nil
 }
 
@@ -60,11 +60,11 @@ func (s *Service) GetByID(ctx context.Context, id string) (*Order, error) {
 	// Try cache first
 	order, err := s.cache.Get(ctx, id)
 	if err == nil {
-		log.Printf("Cache hit for order: %s", id)
+		slog.Info("Order cache hit", "order_id", id)
 		return order, nil
 	}
 
-	log.Printf("Cache miss for order: %s, fetching from database", id)
+	slog.Info("Order cache miss, fetching from database", "order_id", id)
 
 	// Cache miss, get from database
 	order, err = s.repo.GetByID(ctx, id)
@@ -74,7 +74,7 @@ func (s *Service) GetByID(ctx context.Context, id string) (*Order, error) {
 
 	// Update cache
 	if err := s.cache.Set(ctx, order); err != nil {
-		log.Printf("Warning: failed to cache order %s: %v", id, err)
+		slog.Warn("Failed to cache order", "order_id", id, "error", err)
 	}
 
 	return order, nil
