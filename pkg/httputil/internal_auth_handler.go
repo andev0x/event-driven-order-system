@@ -17,7 +17,8 @@ const (
 	maxTokenTTLSeconds  = 24 * 60 * 60
 )
 
-type tokenRequest struct {
+// TokenRequest represents an internal auth token request.
+type TokenRequest struct {
 	Subject    string `json:"subject"`
 	TTLSeconds int64  `json:"ttl_seconds"`
 }
@@ -61,6 +62,18 @@ func NewInternalAuthHandler(jwtSecret, internalKey, issuer string, defaultTTL ti
 }
 
 // IssueToken handles POST /internal/auth/token.
+// @Summary Issue internal auth token
+// @Description Issue a JWT token for service-to-service or local automation access.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param X-Internal-Auth-Key header string true "Internal authentication key"
+// @Param request body TokenRequest false "Optional token request payload"
+// @Success 200 {object} TokenResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /internal/auth/token [post]
 func (h *InternalAuthHandler) IssueToken(w http.ResponseWriter, r *http.Request) {
 	if len(h.secret) == 0 {
 		RespondError(w, http.StatusInternalServerError, "jwt secret not configured")
@@ -116,10 +129,10 @@ func (h *InternalAuthHandler) IssueToken(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-func parseTokenRequest(w http.ResponseWriter, r *http.Request) (*tokenRequest, bool) {
+func parseTokenRequest(w http.ResponseWriter, r *http.Request) (*TokenRequest, bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
-	var req tokenRequest
+	var req TokenRequest
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 

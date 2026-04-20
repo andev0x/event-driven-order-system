@@ -1,4 +1,11 @@
 // Package main provides the entry point for the analytics service API server.
+// @title Analytics Service API
+// @version 1.0
+// @description REST API for analytics summary and service observability.
+// @BasePath /
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
 package main
 
 import (
@@ -12,6 +19,7 @@ import (
 
 	"github.com/andev0x/analytics-service/internal/analytics"
 	"github.com/andev0x/analytics-service/internal/api"
+	_ "github.com/andev0x/analytics-service/internal/api/docs"
 	"github.com/andev0x/analytics-service/internal/infrastructure/cache"
 	"github.com/andev0x/analytics-service/internal/infrastructure/messaging"
 	"github.com/andev0x/analytics-service/internal/infrastructure/persistence"
@@ -22,6 +30,7 @@ import (
 	pkgredis "github.com/andev0x/event-driven-order-system/pkg/redis"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 func main() {
@@ -95,6 +104,7 @@ func main() {
 		cfg.InternalAuthIssuer,
 		cfg.InternalAuthTokenTTL,
 	)
+	analyticsHandler.SetInternalAuthHandler(authHandler)
 
 	// Initialize RabbitMQ consumer
 	slog.Info("Connecting to RabbitMQ")
@@ -133,7 +143,8 @@ func main() {
 	// Health and metrics endpoints
 	router.HandleFunc("/health", analyticsHandler.HealthCheck).Methods("GET")
 	router.Handle("/metrics", promhttp.Handler()).Methods("GET")
-	router.HandleFunc("/internal/auth/token", authHandler.IssueToken).Methods("POST")
+	router.HandleFunc("/internal/auth/token", analyticsHandler.IssueToken).Methods("POST")
+	router.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
 
 	// Analytics endpoints
 	protectedRouter.HandleFunc("/analytics/summary", analyticsHandler.GetSummary).Methods("GET")

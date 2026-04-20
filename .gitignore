@@ -11,8 +11,8 @@ out/
 *.test
 /services/**/main
 # Specifically ignore your compiled service binaries
-order-service
-analytics-service
+/order-service
+/analytics-service
 
 # --- Go Specific ---
 # Ignore vendor if using Go Modules

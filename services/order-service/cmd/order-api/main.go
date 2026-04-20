@@ -1,4 +1,11 @@
 // Package main provides the entry point for the order service API.
+// @title Order Service API
+// @version 1.0
+// @description REST API for creating and querying orders.
+// @BasePath /
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
 package main
 
 import (
@@ -15,12 +22,14 @@ import (
 	"github.com/andev0x/event-driven-order-system/pkg/httputil"
 	pkgredis "github.com/andev0x/event-driven-order-system/pkg/redis"
 	"github.com/andev0x/order-service/internal/api"
+	_ "github.com/andev0x/order-service/internal/api/docs"
 	"github.com/andev0x/order-service/internal/infrastructure/cache"
 	"github.com/andev0x/order-service/internal/infrastructure/messaging"
 	"github.com/andev0x/order-service/internal/infrastructure/persistence"
 	"github.com/andev0x/order-service/internal/order"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 func main() {
@@ -108,6 +117,7 @@ func main() {
 		cfg.InternalAuthIssuer,
 		cfg.InternalAuthTokenTTL,
 	)
+	orderHandler.SetInternalAuthHandler(authHandler)
 
 	// Setup health checker
 	healthChecker := &api.HealthChecker{
@@ -132,7 +142,8 @@ func main() {
 	// Health and metrics endpoints
 	router.HandleFunc("/health", orderHandler.HealthCheck).Methods("GET")
 	router.Handle("/metrics", promhttp.Handler()).Methods("GET")
-	router.HandleFunc("/internal/auth/token", authHandler.IssueToken).Methods("POST")
+	router.HandleFunc("/internal/auth/token", orderHandler.IssueToken).Methods("POST")
+	router.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
 
 	// Order endpoints
 	protectedRouter.HandleFunc("/orders", orderHandler.CreateOrder).Methods("POST")

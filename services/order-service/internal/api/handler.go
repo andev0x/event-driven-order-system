@@ -15,8 +15,9 @@ import (
 
 // Handler handles HTTP requests for orders.
 type Handler struct {
-	service     *order.Service
-	healthCheck *HealthChecker
+	service             *order.Service
+	healthCheck         *HealthChecker
+	internalAuthHandler *httputil.InternalAuthHandler
 }
 
 // HealthChecker provides health check functionality.
@@ -29,8 +30,9 @@ type HealthChecker struct {
 // NewHandler creates a new order handler.
 func NewHandler(service *order.Service) *Handler {
 	return &Handler{
-		service:     service,
-		healthCheck: nil,
+		service:             service,
+		healthCheck:         nil,
+		internalAuthHandler: nil,
 	}
 }
 
@@ -39,7 +41,45 @@ func (h *Handler) SetHealthChecker(hc *HealthChecker) {
 	h.healthCheck = hc
 }
 
+// SetInternalAuthHandler sets the internal auth handler.
+func (h *Handler) SetInternalAuthHandler(authHandler *httputil.InternalAuthHandler) {
+	h.internalAuthHandler = authHandler
+}
+
+// IssueToken handles POST /internal/auth/token.
+// @Summary Issue internal auth token
+// @Description Issue a JWT token for service-to-service or local automation access.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param X-Internal-Auth-Key header string true "Internal authentication key"
+// @Param request body httputil.TokenRequest false "Optional token request payload"
+// @Success 200 {object} httputil.TokenResponse
+// @Failure 400 {object} httputil.ErrorResponse
+// @Failure 401 {object} httputil.ErrorResponse
+// @Failure 500 {object} httputil.ErrorResponse
+// @Router /internal/auth/token [post]
+func (h *Handler) IssueToken(w http.ResponseWriter, r *http.Request) {
+	if h.internalAuthHandler == nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal auth handler not configured")
+		return
+	}
+
+	h.internalAuthHandler.IssueToken(w, r)
+}
+
 // CreateOrder handles POST /orders
+// @Summary Create order
+// @Description Create a new order and publish an OrderCreated event.
+// @Tags orders
+// @Accept json
+// @Produce json
+// @Param request body order.CreateRequest true "Order payload"
+// @Success 201 {object} order.Order
+// @Failure 400 {object} httputil.ErrorResponse
+// @Failure 500 {object} httputil.ErrorResponse
+// @Security BearerAuth
+// @Router /orders [post]
 func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
@@ -72,6 +112,16 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetOrder handles GET /orders/{id}
+// @Summary Get order by ID
+// @Description Retrieve a single order by its unique identifier.
+// @Tags orders
+// @Produce json
+// @Param id path string true "Order ID"
+// @Success 200 {object} order.Order
+// @Failure 400 {object} httputil.ErrorResponse
+// @Failure 404 {object} httputil.ErrorResponse
+// @Security BearerAuth
+// @Router /orders/{id} [get]
 func (h *Handler) GetOrder(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
@@ -92,6 +142,17 @@ func (h *Handler) GetOrder(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListOrders handles GET /orders
+// @Summary List orders
+// @Description List orders using pagination.
+// @Tags orders
+// @Produce json
+// @Param limit query int false "Max number of items to return" default(10)
+// @Param offset query int false "Number of items to skip" default(0)
+// @Success 200 {array} order.Order
+// @Failure 400 {object} httputil.ErrorResponse
+// @Failure 500 {object} httputil.ErrorResponse
+// @Security BearerAuth
+// @Router /orders [get]
 func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 	limitStr := r.URL.Query().Get("limit")
 	offsetStr := r.URL.Query().Get("offset")
@@ -140,6 +201,13 @@ func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 }
 
 // HealthCheck handles GET /health
+// @Summary Health check
+// @Description Returns service health and dependency checks.
+// @Tags health
+// @Produce json
+// @Success 200 {object} httputil.HealthResponse
+// @Failure 503 {object} httputil.HealthResponse
+// @Router /health [get]
 func (h *Handler) HealthCheck(w http.ResponseWriter, _ *http.Request) {
 	response := httputil.NewHealthResponse("order-service")
 

@@ -1,0 +1,232 @@
+basePath: /
+definitions:
+  github_com_andev0x_order-service_internal_order.CreateRequest:
+    properties:
+      customer_id:
+        type: string
+      product_id:
+        type: string
+      quantity:
+        type: integer
+      total_amount:
+        type: number
+    required:
+    - customer_id
+    - product_id
+    - quantity
+    - total_amount
+    type: object
+  github_com_andev0x_order-service_internal_order.Order:
+    properties:
+      created_at:
+        type: string
+      customer_id:
+        type: string
+      id:
+        type: string
+      product_id:
+        type: string
+      quantity:
+        type: integer
+      status:
+        type: string
+      total_amount:
+        type: number
+      updated_at:
+        type: string
+    type: object
+  httputil.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  httputil.HealthResponse:
+    properties:
+      checks:
+        additionalProperties:
+          type: string
+        type: object
+      service:
+        type: string
+      status:
+        type: string
+    type: object
+  httputil.TokenRequest:
+    properties:
+      subject:
+        type: string
+      ttl_seconds:
+        type: integer
+    type: object
+  httputil.TokenResponse:
+    properties:
+      access_token:
+        type: string
+      expires_in:
+        type: integer
+      token_type:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: REST API for creating and querying orders.
+  title: Order Service API
+  version: "1.0"
+paths:
+  /health:
+    get:
+      description: Returns service health and dependency checks.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httputil.HealthResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httputil.HealthResponse'
+      summary: Health check
+      tags:
+      - health
+  /internal/auth/token:
+    post:
+      consumes:
+      - application/json
+      description: Issue a JWT token for service-to-service or local automation access.
+      parameters:
+      - description: Internal authentication key
+        in: header
+        name: X-Internal-Auth-Key
+        required: true
+        type: string
+      - description: Optional token request payload
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/httputil.TokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httputil.TokenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httputil.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httputil.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httputil.ErrorResponse'
+      summary: Issue internal auth token
+      tags:
+      - auth
+  /orders:
+    get:
+      description: List orders using pagination.
+      parameters:
+      - default: 10
+        description: Max number of items to return
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Number of items to skip
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/github_com_andev0x_order-service_internal_order.Order'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httputil.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httputil.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List orders
+      tags:
+      - orders
+    post:
+      consumes:
+      - application/json
+      description: Create a new order and publish an OrderCreated event.
+      parameters:
+      - description: Order payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_andev0x_order-service_internal_order.CreateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/github_com_andev0x_order-service_internal_order.Order'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httputil.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httputil.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create order
+      tags:
+      - orders
+  /orders/{id}:
+    get:
+      description: Retrieve a single order by its unique identifier.
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_andev0x_order-service_internal_order.Order'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httputil.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httputil.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get order by ID
+      tags:
+      - orders
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
