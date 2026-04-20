@@ -1,9 +1,16 @@
 // Package main provides the entry point for the analytics service API server.
+// @title Analytics Service API
+// @version 1.0
+// @description REST API for analytics summary and service observability.
+// @BasePath /
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
 package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,6 +19,7 @@ import (
 
 	"github.com/andev0x/analytics-service/internal/analytics"
 	"github.com/andev0x/analytics-service/internal/api"
+	_ "github.com/andev0x/analytics-service/internal/api/docs"
 	"github.com/andev0x/analytics-service/internal/infrastructure/cache"
 	"github.com/andev0x/analytics-service/internal/infrastructure/messaging"
 	"github.com/andev0x/analytics-service/internal/infrastructure/persistence"
@@ -22,22 +30,28 @@ import (
 	pkgredis "github.com/andev0x/event-driven-order-system/pkg/redis"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 func main() {
-	log.Println("Starting Analytics Service...")
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "analytics-service")
+	slog.SetDefault(logger)
+
+	slog.Info("Starting analytics service")
 
 	// Load configuration
 	cfg := loadConfig()
 	if cfg.JWTSecret == "" {
-		log.Fatal("JWT_SECRET is required")
+		slog.Error("Missing required configuration", "key", "JWT_SECRET")
+		os.Exit(1)
 	}
 	if cfg.InternalAuthKey == "" {
-		log.Fatal("INTERNAL_AUTH_KEY is required")
+		slog.Error("Missing required configuration", "key", "INTERNAL_AUTH_KEY")
+		os.Exit(1)
 	}
 
 	// Initialize database
-	log.Println("Connecting to database...")
+	slog.Info("Connecting to database")
 	dbCfg := database.Config{
 		Host:     cfg.DBHost,
 		Port:     cfg.DBPort,
@@ -47,31 +61,33 @@ func main() {
 	}
 	db, err := database.Connect(dbCfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		slog.Error("Failed to initialize database", "error", err)
+		os.Exit(1)
 	}
 	defer func() {
 		if err := db.Close(); err != nil {
-			log.Printf("Error closing database: %v", err)
+			slog.Error("Failed to close database", "error", err)
 		}
 	}()
-	log.Println("Database connected successfully")
+	slog.Info("Database connected successfully")
 
 	// Initialize Redis
-	log.Println("Connecting to Redis...")
+	slog.Info("Connecting to Redis")
 	redisCfg := pkgredis.Config{
 		Host: cfg.RedisHost,
 		Port: cfg.RedisPort,
 	}
 	redisClient, err := pkgredis.Connect(redisCfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize Redis: %v", err)
+		slog.Error("Failed to initialize Redis", "error", err)
+		os.Exit(1)
 	}
 	defer func() {
 		if err := redisClient.Close(); err != nil {
-			log.Printf("Error closing Redis: %v", err)
+			slog.Error("Failed to close Redis", "error", err)
 		}
 	}()
-	log.Println("Redis connected successfully")
+	slog.Info("Redis connected successfully")
 
 	// Create infrastructure implementations
 	analyticsRepo := persistence.NewMySQLRepository(db)
@@ -88,19 +104,21 @@ func main() {
 		cfg.InternalAuthIssuer,
 		cfg.InternalAuthTokenTTL,
 	)
+	analyticsHandler.SetInternalAuthHandler(authHandler)
 
 	// Initialize RabbitMQ consumer
-	log.Println("Connecting to RabbitMQ...")
+	slog.Info("Connecting to RabbitMQ")
 	consumer, err := messaging.NewRabbitMQConsumer(cfg.RabbitMQURL)
 	if err != nil {
-		log.Fatalf("Failed to initialize RabbitMQ consumer: %v", err)
+		slog.Error("Failed to initialize RabbitMQ consumer", "error", err)
+		os.Exit(1)
 	}
 	defer func() {
 		if err := consumer.Close(); err != nil {
-			log.Printf("Error closing consumer: %v", err)
+			slog.Error("Failed to close RabbitMQ consumer", "error", err)
 		}
 	}()
-	log.Println("RabbitMQ connected successfully")
+	slog.Info("RabbitMQ connected successfully")
 
 	// Setup health checker
 	healthChecker := &api.HealthChecker{
@@ -125,7 +143,8 @@ func main() {
 	// Health and metrics endpoints
 	router.HandleFunc("/health", analyticsHandler.HealthCheck).Methods("GET")
 	router.Handle("/metrics", promhttp.Handler()).Methods("GET")
-	router.HandleFunc("/internal/auth/token", authHandler.IssueToken).Methods("POST")
+	router.HandleFunc("/internal/auth/token", analyticsHandler.IssueToken).Methods("POST")
+	router.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
 
 	// Analytics endpoints
 	protectedRouter.HandleFunc("/analytics/summary", analyticsHandler.GetSummary).Methods("GET")
@@ -146,14 +165,16 @@ func main() {
 		return analyticsService.ProcessOrderEvent(context.Background(), event)
 	})
 	if err != nil {
-		log.Fatalf("Failed to start consuming: %v", err)
+		slog.Error("Failed to start consuming events", "error", err)
+		os.Exit(1)
 	}
 
 	// Start server in a goroutine
 	go func() {
-		log.Printf("Analytics Service listening on port %s", cfg.ServicePort)
+		slog.Info("Analytics service listening", "port", cfg.ServicePort)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start server: %v", err)
+			slog.Error("Failed to start HTTP server", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -162,17 +183,17 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("Shutting down server...")
+	slog.Info("Shutting down server")
 	cancel() // Stop the consumer
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Server forced to shutdown: %v", err)
+		slog.Error("Server forced to shutdown", "error", err)
 	}
 
-	log.Println("Server exited gracefully")
+	slog.Info("Server exited gracefully")
 }
 
 // Config holds application configuration.

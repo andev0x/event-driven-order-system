@@ -5,7 +5,7 @@ SHELL := /bin/bash
 .ONESHELL:
 .SHELLFLAGS := -eu -o pipefail -c
 
-.PHONY: help tidy test build build-go up down logs clean restart token-order token-analytics order analytics notification
+.PHONY: help tidy test build build-go swagger up down logs clean restart token-order token-analytics order analytics notification
 
 SERVICES := order-service analytics-service notification-worker
 SERVICES_DIR := services
@@ -21,6 +21,7 @@ help:
 	@echo "  make test           - Run tests for all services"
 	@echo "  make build          - Build Docker images"
 	@echo "  make build-go       - Build Go binaries"
+	@echo "  make swagger        - Generate Swagger docs for API services"
 	@echo "  make up             - Start all services with docker compose"
 	@echo "  make down           - Stop all services"
 	@echo "  make logs           - Show logs from all services"
@@ -57,6 +58,12 @@ build-go:
 	(cd services/analytics-service && go build -o bin/analytics-api ./cmd/analytics-api)
 	(cd services/notification-worker && go build -o bin/notification-worker ./cmd/notification-worker)
 	@echo "Binaries built."
+
+swagger:
+	@echo "Generating Swagger docs..."
+	(cd services/order-service && go run github.com/swaggo/swag/cmd/swag@v1.16.6 init -g cmd/order-api/main.go -o internal/api/docs --parseDependency --parseInternal)
+	(cd services/analytics-service && go run github.com/swaggo/swag/cmd/swag@v1.16.6 init -g cmd/analytics-api/main.go -o internal/api/docs --parseDependency --parseInternal)
+	@echo "Swagger docs generated."
 
 up:
 	@echo "Starting services..."

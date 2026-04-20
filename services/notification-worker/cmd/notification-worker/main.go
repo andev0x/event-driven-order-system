@@ -4,7 +4,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,7 +19,10 @@ import (
 )
 
 func main() {
-	log.Println("Starting Notification Worker...")
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "notification-worker")
+	slog.SetDefault(logger)
+
+	slog.Info("Starting notification worker")
 
 	// Get configuration from environment
 	rabbitMQURL := config.GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
@@ -28,11 +31,12 @@ func main() {
 	// Connect to RabbitMQ
 	consumer, err := messaging.NewRabbitMQConsumer(rabbitMQURL, 10)
 	if err != nil {
-		log.Fatalf("Failed to connect to RabbitMQ: %v", err)
+		slog.Error("Failed to connect to RabbitMQ", "error", err)
+		os.Exit(1)
 	}
 	defer func() {
 		if err := consumer.Close(); err != nil {
-			log.Printf("Error closing RabbitMQ consumer: %v", err)
+			slog.Error("Failed to close RabbitMQ consumer", "error", err)
 		}
 	}()
 
@@ -54,9 +58,9 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("Health check server listening on port %s", healthPort)
+		slog.Info("Health check server listening", "port", healthPort)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("Health check server error: %v", err)
+			slog.Error("Health check server error", "error", err)
 		}
 	}()
 
@@ -69,7 +73,7 @@ func main() {
 
 	go func() {
 		<-quit
-		log.Println("Shutting down notification worker...")
+		slog.Info("Shutting down notification worker")
 		cancel()
 	}()
 
@@ -78,10 +82,11 @@ func main() {
 		return notificationService.ProcessOrderCreated(ctx, event)
 	})
 	if err != nil {
-		log.Fatalf("Failed to start consuming: %v", err)
+		slog.Error("Failed to start consuming events", "error", err)
+		os.Exit(1)
 	}
 
 	// Wait for shutdown signal
 	<-ctx.Done()
-	log.Println("Notification worker stopped")
+	slog.Info("Notification worker stopped")
 }

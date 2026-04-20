@@ -1,0 +1,131 @@
+basePath: /
+definitions:
+  github_com_andev0x_analytics-service_internal_analytics.Summary:
+    properties:
+      average_order_size:
+        type: number
+      last_updated:
+        type: string
+      total_orders:
+        type: integer
+      total_revenue:
+        type: number
+    type: object
+  httputil.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  httputil.HealthResponse:
+    properties:
+      checks:
+        additionalProperties:
+          type: string
+        type: object
+      service:
+        type: string
+      status:
+        type: string
+    type: object
+  httputil.TokenRequest:
+    properties:
+      subject:
+        type: string
+      ttl_seconds:
+        type: integer
+    type: object
+  httputil.TokenResponse:
+    properties:
+      access_token:
+        type: string
+      expires_in:
+        type: integer
+      token_type:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: REST API for analytics summary and service observability.
+  title: Analytics Service API
+  version: "1.0"
+paths:
+  /analytics/summary:
+    get:
+      description: Retrieve aggregated order analytics metrics.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_andev0x_analytics-service_internal_analytics.Summary'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httputil.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get analytics summary
+      tags:
+      - analytics
+  /health:
+    get:
+      description: Returns service health and dependency checks.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httputil.HealthResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httputil.HealthResponse'
+      summary: Health check
+      tags:
+      - health
+  /internal/auth/token:
+    post:
+      consumes:
+      - application/json
+      description: Issue a JWT token for service-to-service or local automation access.
+      parameters:
+      - description: Internal authentication key
+        in: header
+        name: X-Internal-Auth-Key
+        required: true
+        type: string
+      - description: Optional token request payload
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/httputil.TokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httputil.TokenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httputil.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httputil.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httputil.ErrorResponse'
+      summary: Issue internal auth token
+      tags:
+      - auth
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

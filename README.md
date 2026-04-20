@@ -150,6 +150,8 @@ docker compose ps
 |---------|-----|-------------|
 | Order Service | http://localhost:8080 | - |
 | Analytics Service | http://localhost:8081 | - |
+| Order Service Swagger UI | http://localhost:8080/swagger/index.html | - |
+| Analytics Service Swagger UI | http://localhost:8081/swagger/index.html | - |
 | Internal Auth Token (Order) | http://localhost:8080/internal/auth/token | `X-Internal-Auth-Key` header |
 | Internal Auth Token (Analytics) | http://localhost:8081/internal/auth/token | `X-Internal-Auth-Key` header |
 | RabbitMQ Management | http://localhost:15672 | guest / guest |
@@ -372,6 +374,7 @@ make tidy          # Tidy Go modules
 make test          # Run all tests
 make build         # Build Docker images
 make build-go      # Build Go binaries
+make swagger       # Generate Swagger docs
 make up            # Start all services
 make down          # Stop all services
 make logs          # Stream service logs
@@ -379,6 +382,17 @@ make restart       # Restart all services
 make clean         # Remove containers and volumes
 make token-order   # Print Order Service JWT token
 make token-analytics # Print Analytics Service JWT token
+```
+
+Swagger docs are generated into:
+
+- `services/order-service/internal/api/docs`
+- `services/analytics-service/internal/api/docs`
+
+Regenerate docs after changing API annotations:
+
+```bash
+make swagger
 ```
 
 ### Environment Variables

@@ -2,7 +2,7 @@ package httputil
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 )
 
@@ -17,7 +17,7 @@ func RespondJSON(w http.ResponseWriter, code int, payload interface{}) {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		if _, writeErr := w.Write([]byte(`{"error":"Internal server error"}`)); writeErr != nil {
-			log.Printf("Error writing error response: %v", writeErr)
+			slog.Error("Failed to write HTTP error response", "error", writeErr)
 		}
 		return
 	}
@@ -25,7 +25,7 @@ func RespondJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	if _, err := w.Write(response); err != nil {
-		log.Printf("Error writing response: %v", err)
+		slog.Error("Failed to write HTTP response", "status_code", code, "error", err)
 	}
 }
 
