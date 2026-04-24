@@ -1,6 +1,6 @@
 module github.com/andev0x/event-driven-order-system/pkg
 
-go 1.23
+go 1.21.0
 
 require (
 	github.com/go-sql-driver/mysql v1.9.3
@@ -32,5 +32,5 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20231002182017-d307bd883b97 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20231002182017-d307bd883b97 // indirect
 	google.golang.org/grpc v1.59.0 // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
+	google.golang.org/protobuf v1.31.0 // indirect
 )

@@ -1,6 +1,6 @@
 module github.com/andev0x/order-service
 
-go 1.23.0
+go 1.21.0
 
 require (
 	github.com/go-sql-driver/mysql v1.9.3 // indirect
@@ -14,7 +14,7 @@ require (
 require (
 	github.com/andev0x/event-driven-order-system/pkg v0.0.0-00010101000000-000000000000
 	github.com/swaggo/http-swagger v1.3.4
-	github.com/swaggo/swag v1.16.3
+	github.com/swaggo/swag v1.16.6
 	go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux v0.46.0
 	go.opentelemetry.io/otel v1.21.0
 	go.opentelemetry.io/otel/trace v1.21.0
@@ -50,15 +50,15 @@ require (
 	go.opentelemetry.io/otel/sdk v1.21.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.0.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/mod v0.25.0 // indirect
-	golang.org/x/net v0.20.0 // indirect
-	golang.org/x/sys v0.16.0 // indirect
-	golang.org/x/text v0.14.0 // indirect
-	golang.org/x/tools v0.17.0 // indirect
+	golang.org/x/mod v0.17.0 // indirect
+	golang.org/x/net v0.34.0 // indirect
+	golang.org/x/sys v0.29.0 // indirect
+	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20231002182017-d307bd883b97 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20231002182017-d307bd883b97 // indirect
 	google.golang.org/grpc v1.59.0 // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
+	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 

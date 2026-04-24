@@ -137,7 +137,7 @@ services:
 
   # RabbitMQ exporter
   rabbitmq-exporter:
-    image: kbudde/rabbitmq-exporter:v1.0.0-RC19
+    image: kbudde/rabbitmq-exporter:latest
     container_name: rabbitmq-exporter
     environment:
       RABBIT_URL: http://rabbitmq:15672
@@ -162,8 +162,8 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
       - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
-      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards/json:ro
+      - ./monitoring/grafana/provisioning/dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       prometheus:
         condition: service_started
