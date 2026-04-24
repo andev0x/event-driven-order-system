@@ -155,6 +155,9 @@ docker compose ps
 | Internal Auth Token (Order) | http://localhost:8080/internal/auth/token | `X-Internal-Auth-Key` header |
 | Internal Auth Token (Analytics) | http://localhost:8081/internal/auth/token | `X-Internal-Auth-Key` header |
 | RabbitMQ Management | http://localhost:15672 | guest / guest |
+| Jaeger UI | http://localhost:16686 | - |
+| Grafana | http://localhost:3000 | admin / admin |
+| Prometheus | http://localhost:9090 | - |
 | MySQL (Order DB) | localhost:3306 | orderuser / orderpass |
 | MySQL (Analytics DB) | localhost:3307 | analyticsuser / analyticspass |
 | Redis | localhost:6379 | - |
@@ -501,6 +504,26 @@ Prometheus-format metrics are available at `/metrics`:
 | `http_request_duration_seconds` | Histogram | HTTP request latency |
 | `http_requests_total` | Counter | Total HTTP requests |
 
+### Distributed Tracing
+
+OpenTelemetry tracing is enabled in `order-service` and `analytics-service`:
+
+- HTTP requests create/continue traces via Gorilla Mux OTel middleware.
+- `order-service` injects trace context into RabbitMQ message headers (`traceparent` and baggage).
+- `analytics-service` extracts headers and continues the trace when consuming events.
+- Jaeger collects traces via OTLP gRPC (`jaeger:4317`) and exposes UI at `http://localhost:16686`.
+
+### Grafana Dashboards
+
+Grafana is pre-provisioned with Prometheus datasource and sample infrastructure dashboards:
+
+- `MySQL Overview`
+- `Redis Overview`
+- `RabbitMQ Overview`
+
+After `docker compose up --build`, open `http://localhost:3000` and navigate to Dashboards.
+Run `make order` repeatedly and you should see queue depth, DB activity, and Redis command rate move.
+
 ### RabbitMQ Management
 
 Monitor queues and message throughput at http://localhost:15672 (guest/guest).
@@ -599,7 +622,7 @@ FLUSHALL
 
 - [ ] gRPC for inter-service communication
 - [x] Dead-letter queue (DLQ) for failed messages
-- [ ] OpenTelemetry distributed tracing
+- [x] OpenTelemetry distributed tracing
 - [ ] Circuit breaker pattern
 - [ ] Rate limiting
 - [ ] JWT authentication and RBAC

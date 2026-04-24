@@ -7,7 +7,11 @@ import (
 	"log/slog"
 
 	"github.com/andev0x/event-driven-order-system/pkg/events"
+	"github.com/andev0x/event-driven-order-system/pkg/observability"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -25,6 +29,7 @@ const (
 type RabbitMQConsumer struct {
 	conn    *amqp.Connection
 	channel *amqp.Channel
+	tracer  trace.Tracer
 }
 
 // NewRabbitMQConsumer creates a new RabbitMQ consumer.
@@ -138,11 +143,12 @@ func NewRabbitMQConsumer(url string) (*RabbitMQConsumer, error) {
 	return &RabbitMQConsumer{
 		conn:    conn,
 		channel: channel,
+		tracer:  otel.Tracer("analytics-service/rabbitmq"),
 	}, nil
 }
 
 // EventHandler is a function that processes an order created event.
-type EventHandler func(*events.OrderCreated) error
+type EventHandler func(context.Context, *events.OrderCreated) error
 
 // StartConsuming starts consuming messages from the queue.
 func (c *RabbitMQConsumer) StartConsuming(ctx context.Context, handler EventHandler) error {
@@ -179,14 +185,30 @@ func (c *RabbitMQConsumer) StartConsuming(ctx context.Context, handler EventHand
 					return
 				}
 
+				carrier := observability.NewAMQPCarrier(msg.Headers)
+				messageCtx := otel.GetTextMapPropagator().Extract(ctx, carrier)
+				messageCtx, span := c.tracer.Start(messageCtx, "rabbitmq.consume order.created",
+					trace.WithSpanKind(trace.SpanKindConsumer),
+					trace.WithAttributes(
+						attribute.String("messaging.system", "rabbitmq"),
+						attribute.String("messaging.destination.name", queueName),
+						attribute.String("messaging.destination.kind", "queue"),
+						attribute.String("messaging.rabbitmq.routing_key", routingKey),
+						attribute.String("messaging.operation", "process"),
+					),
+				)
+
 				var event events.OrderCreated
 				if err := json.Unmarshal(msg.Body, &event); err != nil {
 					slog.Error("Failed to unmarshal order event", "queue", queueName, "error", err)
+					span.RecordError(err)
+					span.End()
 					if nackErr := msg.Nack(false, false); nackErr != nil {
 						slog.Error("Failed to nack RabbitMQ message", "queue", queueName, "error", nackErr)
 					}
 					continue
 				}
+				span.SetAttributes(attribute.String("order.id", event.OrderID))
 
 				slog.Info("Received OrderCreated event",
 					"order_id", event.OrderID,
@@ -194,12 +216,14 @@ func (c *RabbitMQConsumer) StartConsuming(ctx context.Context, handler EventHand
 					"total_amount", event.TotalAmount,
 				)
 
-				if err := handler(&event); err != nil {
+				if err := handler(messageCtx, &event); err != nil {
 					slog.Error("Failed to process order event",
 						"order_id", event.OrderID,
 						"queue", queueName,
 						"error", err,
 					)
+					span.RecordError(err)
+					span.End()
 					if nackErr := msg.Nack(false, false); nackErr != nil {
 						slog.Error("Failed to nack RabbitMQ message", "queue", queueName, "error", nackErr)
 					}
@@ -212,8 +236,12 @@ func (c *RabbitMQConsumer) StartConsuming(ctx context.Context, handler EventHand
 
 				if ackErr := msg.Ack(false); ackErr != nil {
 					slog.Error("Failed to ack RabbitMQ message", "queue", queueName, "error", ackErr)
+					span.RecordError(ackErr)
+					span.End()
+					continue
 				}
 				slog.Info("Successfully processed order event", "order_id", event.OrderID)
+				span.End()
 			}
 		}
 	}()

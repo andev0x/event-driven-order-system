@@ -8,8 +8,12 @@ import (
 	"time"
 
 	pkgevents "github.com/andev0x/event-driven-order-system/pkg/events"
+	"github.com/andev0x/event-driven-order-system/pkg/observability"
 	"github.com/andev0x/order-service/internal/order"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -22,6 +26,7 @@ const (
 type RabbitMQPublisher struct {
 	conn    *amqp.Connection
 	channel *amqp.Channel
+	tracer  trace.Tracer
 }
 
 // NewRabbitMQPublisher creates a new RabbitMQ publisher.
@@ -64,11 +69,25 @@ func NewRabbitMQPublisher(url string) (*RabbitMQPublisher, error) {
 	return &RabbitMQPublisher{
 		conn:    conn,
 		channel: channel,
+		tracer:  otel.Tracer("order-service/rabbitmq"),
 	}, nil
 }
 
 // PublishOrderCreated publishes an order created event.
 func (p *RabbitMQPublisher) PublishOrderCreated(ctx context.Context, o *order.Order) error {
+	ctx, span := p.tracer.Start(ctx, "rabbitmq.publish order.created",
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			attribute.String("messaging.system", "rabbitmq"),
+			attribute.String("messaging.destination.name", exchangeName),
+			attribute.String("messaging.destination.kind", "exchange"),
+			attribute.String("messaging.rabbitmq.routing_key", routingKey),
+			attribute.String("messaging.operation", "publish"),
+			attribute.String("order.id", o.ID),
+		),
+	)
+	defer span.End()
+
 	event := pkgevents.NewOrderCreated(
 		o.ID,
 		o.CustomerID,
@@ -84,6 +103,9 @@ func (p *RabbitMQPublisher) PublishOrderCreated(ctx context.Context, o *order.Or
 		return fmt.Errorf("failed to marshal event: %w", err)
 	}
 
+	carrier := observability.NewAMQPCarrier(nil)
+	otel.GetTextMapPropagator().Inject(ctx, carrier)
+
 	err = p.channel.PublishWithContext(
 		ctx,
 		exchangeName,
@@ -95,6 +117,7 @@ func (p *RabbitMQPublisher) PublishOrderCreated(ctx context.Context, o *order.Or
 			Body:         body,
 			DeliveryMode: amqp.Persistent,
 			Timestamp:    time.Now(),
+			Headers:      carrier.Headers(),
 		},
 	)
 	if err != nil {

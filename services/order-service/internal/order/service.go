@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/andev0x/event-driven-order-system/pkg/observability"
 	"github.com/google/uuid"
 )
 
@@ -45,8 +46,9 @@ func (s *Service) Create(ctx context.Context, req *CreateRequest) (*Order, error
 	}
 
 	// Publish event asynchronously
+	publishCtx := observability.DetachContext(ctx)
 	go func() {
-		if err := s.publisher.PublishOrderCreated(context.Background(), order); err != nil {
+		if err := s.publisher.PublishOrderCreated(publishCtx, order); err != nil {
 			slog.Error("Failed to publish order created event", "order_id", order.ID, "error", err)
 		}
 	}()
