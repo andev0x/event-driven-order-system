@@ -67,6 +67,108 @@ services:
       timeout: 5s
       retries: 5
 
+  # Jaeger (OpenTelemetry backend)
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    restart: unless-stopped
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:v2.53.1
+    container_name: prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      order-db:
+        condition: service_healthy
+      analytics-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # MySQL exporter for order-db
+  mysqld-exporter-order:
+    image: prom/mysqld-exporter:v0.15.1
+    container_name: mysqld-exporter-order
+    environment:
+      DATA_SOURCE_NAME: root:${DB_ROOT_PASSWORD:-rootpassword}@(order-db:3306)/
+    depends_on:
+      order-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # MySQL exporter for analytics-db
+  mysqld-exporter-analytics:
+    image: prom/mysqld-exporter:v0.15.1
+    container_name: mysqld-exporter-analytics
+    environment:
+      DATA_SOURCE_NAME: root:${DB_ROOT_PASSWORD:-rootpassword}@(analytics-db:3306)/
+    depends_on:
+      analytics-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Redis exporter
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.66.0
+    container_name: redis-exporter
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # RabbitMQ exporter
+  rabbitmq-exporter:
+    image: kbudde/rabbitmq-exporter:v1.0.0-RC19
+    container_name: rabbitmq-exporter
+    environment:
+      RABBIT_URL: http://rabbitmq:15672
+      RABBIT_USER: guest
+      RABBIT_PASSWORD: guest
+      PUBLISH_PORT: 9419
+      OUTPUT_FORMAT: JSON
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards/json:ro
+    depends_on:
+      prometheus:
+        condition: service_started
+    restart: unless-stopped
+
   # Order Service
   order-service:
     build:
@@ -85,6 +187,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       INTERNAL_AUTH_KEY: ${INTERNAL_AUTH_KEY:-dev-internal-key-change-me}
       SERVICE_PORT: 8080
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
     ports:
       - "8080:8080"
     depends_on:
@@ -94,6 +198,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      jaeger:
+        condition: service_started
     restart: unless-stopped
 
   # Analytics Service
@@ -114,6 +220,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       INTERNAL_AUTH_KEY: ${INTERNAL_AUTH_KEY:-dev-internal-key-change-me}
       SERVICE_PORT: 8081
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
     ports:
       - "8081:8081"
     depends_on:
@@ -123,6 +231,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      jaeger:
+        condition: service_started
     restart: unless-stopped
 
   # Notification Worker
@@ -141,3 +251,4 @@ services:
 volumes:
   order-db-data:
   analytics-db-data:
+  grafana-data:

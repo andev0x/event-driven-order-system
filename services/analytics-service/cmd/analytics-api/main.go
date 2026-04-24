@@ -27,10 +27,12 @@ import (
 	"github.com/andev0x/event-driven-order-system/pkg/database"
 	"github.com/andev0x/event-driven-order-system/pkg/events"
 	"github.com/andev0x/event-driven-order-system/pkg/httputil"
+	"github.com/andev0x/event-driven-order-system/pkg/observability"
 	pkgredis "github.com/andev0x/event-driven-order-system/pkg/redis"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	httpSwagger "github.com/swaggo/http-swagger"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux"
 )
 
 func main() {
@@ -49,6 +51,24 @@ func main() {
 		slog.Error("Missing required configuration", "key", "INTERNAL_AUTH_KEY")
 		os.Exit(1)
 	}
+
+	shutdownTracing, err := observability.InitTracing(
+		context.Background(),
+		"analytics-service",
+		cfg.OTLPEndpoint,
+		cfg.OTLPInsecure,
+	)
+	if err != nil {
+		slog.Error("Failed to initialize OpenTelemetry", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		if shutdownErr := shutdownTracing(shutdownCtx); shutdownErr != nil {
+			slog.Error("Failed to shutdown OpenTelemetry", "error", shutdownErr)
+		}
+	}()
 
 	// Initialize database
 	slog.Info("Connecting to database")
@@ -136,6 +156,7 @@ func main() {
 
 	// Setup router
 	router := mux.NewRouter()
+	router.Use(otelmux.Middleware("analytics-service"))
 	jwtMiddleware := httputil.JWTMiddleware(cfg.JWTSecret)
 	protectedRouter := router.NewRoute().Subrouter()
 	protectedRouter.Use(jwtMiddleware)
@@ -161,8 +182,8 @@ func main() {
 	// Start consuming events
 	ctx, cancel := context.WithCancel(context.Background())
 
-	err = consumer.StartConsuming(ctx, func(event *events.OrderCreated) error {
-		return analyticsService.ProcessOrderEvent(context.Background(), event)
+	err = consumer.StartConsuming(ctx, func(msgCtx context.Context, event *events.OrderCreated) error {
+		return analyticsService.ProcessOrderEvent(msgCtx, event)
 	})
 	if err != nil {
 		slog.Error("Failed to start consuming events", "error", err)
@@ -210,6 +231,8 @@ type Config struct {
 	InternalAuthKey      string
 	InternalAuthIssuer   string
 	InternalAuthTokenTTL time.Duration
+	OTLPEndpoint         string
+	OTLPInsecure         bool
 	ServicePort          string
 }
 
@@ -228,6 +251,8 @@ func loadConfig() Config {
 		InternalAuthKey:      config.GetEnv("INTERNAL_AUTH_KEY", ""),
 		InternalAuthIssuer:   config.GetEnv("INTERNAL_AUTH_ISSUER", "analytics-service"),
 		InternalAuthTokenTTL: config.GetEnvDuration("INTERNAL_AUTH_TOKEN_TTL", time.Hour),
+		OTLPEndpoint:         config.GetEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
+		OTLPInsecure:         config.GetEnvBool("OTEL_EXPORTER_OTLP_INSECURE", true),
 		ServicePort:          config.GetEnv("SERVICE_PORT", "8081"),
 	}
 }
